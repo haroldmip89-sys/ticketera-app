@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest"
 
-import { serializeTicketSelection } from "@/modules/checkout/utils/ticket-selection"
+import { serializeTicketSelection, type TicketSelection } from "@/modules/checkout/utils/ticket-selection"
 import type { TicketType } from "@/modules/events/types/event.types"
+import type { EventSeatMap } from "@/modules/seating/types/seating.types"
 import {
   buildSeatCheckoutHref,
   buildSeatSelectionSummary,
   createSeatLookup,
+  formatSeatPosition,
   getSeatQuotas,
   getZoneTicketTypes,
+  parseCompleteSeatSelection,
   SEATS_SEARCH_PARAM,
   toggleSeatSelection,
 } from "@/modules/seating/utils/seat-selection"
@@ -225,5 +228,56 @@ describe("buildSeatCheckoutHref", () => {
     expect(url.pathname).toBe("/events/mi-evento/checkout")
     expect(url.searchParams.get("tickets")).toBe(serializeTicketSelection(selection, TICKET_TYPES))
     expect(url.searchParams.get(SEATS_SEARCH_PARAM)).toBe("platea-A-4,platea-B-1,mezzanine-A-2")
+  })
+})
+
+describe("parseCompleteSeatSelection", () => {
+  const SEAT_MAP: EventSeatMap = { eventId: "evt-x", layout: LAYOUT, soldSeatIds: ["platea-A-3"] }
+  const SELECTION: TicketSelection = { "evt-x-platea": 2 }
+
+  function parse(value: string | string[] | undefined, selection = SELECTION) {
+    return parseCompleteSeatSelection(value, SEAT_MAP, selection, TICKET_TYPES)
+  }
+
+  it("returns the complete summary", () => {
+    const summary = parse("platea-B-2,platea-A-1")
+    expect(summary?.isComplete).toBe(true)
+    expect(summary?.zones[0].seats.map((seat) => seat.seatId)).toEqual(["platea-B-2", "platea-A-1"])
+  })
+
+  it.each([
+    ["incomplete", "platea-A-1"],
+    ["with a sold seat", "platea-A-1,platea-A-3"],
+    ["with an unknown id", "platea-A-1,nope"],
+    ["empty", ""],
+    ["undefined", undefined],
+  ])("returns null when %s", (_, value) => {
+    expect(parse(value)).toBeNull()
+  })
+
+  it("counts duplicated ids once", () => {
+    expect(parse("platea-A-1,platea-A-1")).toBeNull()
+    expect(parse("platea-A-1,platea-A-1,platea-A-2")?.count).toBe(2)
+  })
+
+  it("uses the first value of an array", () => {
+    expect(parse(["platea-A-1,platea-A-2", "nope"])?.isComplete).toBe(true)
+    expect(parse(["platea-A-1", "platea-A-1,platea-A-2"])).toBeNull()
+  })
+
+  it("drops seats of zones without quota", () => {
+    const summary = parse("platea-A-1,mezzanine-A-1,platea-A-2")
+    expect(summary?.zones.map((zone) => zone.zoneId)).toEqual(["platea"])
+    expect(summary?.count).toBe(2)
+  })
+
+  it("returns null when there is no quota at all", () => {
+    expect(parse("platea-A-1", {})).toBeNull()
+  })
+})
+
+describe("formatSeatPosition", () => {
+  it("describes the row and seat number", () => {
+    expect(formatSeatPosition({ rowLabel: "F", number: 12 })).toBe("Fila F, asiento 12")
   })
 })

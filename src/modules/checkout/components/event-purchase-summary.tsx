@@ -8,9 +8,15 @@ import type { EventItem } from "@/modules/events/types/event.types"
 export type EventPurchaseSummaryProps = {
   event: EventItem
   backHref: string
+  /** Texto del link "volver" (solo visible desde lg). Default: "Volver al evento". */
+  backLabel?: string
 }
 
-export function EventPurchaseSummary({ event, backHref }: EventPurchaseSummaryProps) {
+export function EventPurchaseSummary({
+  event,
+  backHref,
+  backLabel = "Volver al evento",
+}: EventPurchaseSummaryProps) {
   const venueLabel = `${event.venue.name}, ${event.venue.city}`
 
   return (
@@ -21,7 +27,7 @@ export function EventPurchaseSummary({ event, backHref }: EventPurchaseSummaryPr
           className="focus-ring hidden h-8 w-fit items-center gap-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground lg:inline-flex"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
-          Volver al evento
+          {backLabel}
         </Link>
 
         <div className="flex items-center gap-3 lg:gap-4">

@@ -5,6 +5,7 @@ import Link from "next/link"
 import { ArrowRight, CalendarX2 } from "lucide-react"
 
 import { SectionHeader } from "@/components/shared/section-header"
+import { ToggleChip } from "@/components/shared/toggle-chip"
 import { Button } from "@/components/ui/button"
 import {
   Empty,
@@ -14,7 +15,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import { cn } from "@/lib/utils"
 import { EventCard } from "@/modules/events/components/event-card"
 import { EventCategoryTiles } from "@/modules/events/components/event-category-tiles"
 import { EVENT_CATEGORIES } from "@/modules/events/data/event-categories"
@@ -23,6 +23,8 @@ import {
   filterUpcomingEvents,
   type EventCategoryFilter,
 } from "@/modules/events/utils/event-filters"
+import { getEventsSearchHref } from "@/modules/events/utils/event-routes"
+import { formatEventCount } from "@/modules/events/utils/event-search"
 
 const FILTER_CHIPS: readonly { id: EventCategoryFilter; label: string }[] = [
   { id: "all", label: "Todos" },
@@ -61,7 +63,7 @@ export function EventDiscovery({ events }: EventDiscoveryProps) {
             title="Próximos eventos"
             description="Ordenados por fecha. Asegura tu lugar antes de que se agoten."
             action={{
-              href: "#",
+              href: getEventsSearchHref(),
               label: "Ver calendario completo",
               className: "hidden md:inline-flex",
             }}
@@ -72,29 +74,20 @@ export function EventDiscovery({ events }: EventDiscoveryProps) {
             aria-label="Filtrar por categoría"
             className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 md:mx-0 md:mt-7 md:flex-wrap md:gap-2.5 md:overflow-visible md:px-0"
           >
-            {FILTER_CHIPS.map((chip) => {
-              const isActive = selected === chip.id
-              return (
-                <button
-                  key={chip.id}
-                  type="button"
-                  aria-pressed={isActive}
-                  onClick={() => setSelected(chip.id)}
-                  className={cn(
-                    "h-11 shrink-0 rounded-full border-[1.5px] px-4 text-sm whitespace-nowrap focus-ring md:px-[18px]",
-                    isActive
-                      ? "border-foreground bg-foreground font-semibold text-background"
-                      : "border-input bg-card font-medium text-foreground"
-                  )}
-                >
-                  {chip.label}
-                </button>
-              )
-            })}
+            {FILTER_CHIPS.map((chip) => (
+              <ToggleChip
+                key={chip.id}
+                pressed={selected === chip.id}
+                onClick={() => setSelected(chip.id)}
+                className="md:px-[18px]"
+              >
+                {chip.label}
+              </ToggleChip>
+            ))}
           </div>
 
           <p className="sr-only" aria-live="polite">
-            {visibleEvents.length === 1 ? "1 evento" : `${visibleEvents.length} eventos`}
+            {formatEventCount(visibleEvents.length)}
           </p>
 
           {visibleEvents.length > 0 ? (
@@ -131,7 +124,7 @@ export function EventDiscovery({ events }: EventDiscoveryProps) {
           )}
 
           <Link
-            href="#"
+            href={getEventsSearchHref()}
             className="mt-5 inline-flex h-13 w-full items-center justify-center gap-2 rounded-[14px] border-[1.5px] border-foreground bg-card px-7 font-semibold text-foreground focus-ring md:mx-auto md:mt-10 md:w-auto"
           >
             Ver todos los eventos

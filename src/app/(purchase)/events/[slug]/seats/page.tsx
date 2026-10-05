@@ -49,7 +49,7 @@ export default async function SeatsPage(props: PageProps<"/events/[slug]/seats">
         mobileTitle="Elige tus asientos"
       />
       <main className="flex-1 bg-secondary">
-        <EventPurchaseSummary event={event} backHref={ticketsHref} />
+        <EventPurchaseSummary event={event} backHref={ticketsHref} backLabel="Volver a Entradas" />
         <SeatSelectionView
           event={event}
           seatMap={seatMap}

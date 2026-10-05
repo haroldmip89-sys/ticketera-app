@@ -15,10 +15,9 @@ import { formatDateLong, formatPrice, formatTime } from "@/lib/format"
 import { withImageWidth } from "@/lib/image-url"
 import { EventActions } from "@/modules/events/components/event-actions"
 import type { EventItem } from "@/modules/events/types/event.types"
-import { getEventTicketsHref } from "@/modules/events/utils/event-routes"
+import { getEventsSearchHref, getEventTicketsHref } from "@/modules/events/utils/event-routes"
 
 const HERO_IMAGE_WIDTH = 1600
-const EVENTS_HREF = "/#eventos"
 const CTA_CLASS_NAME = "h-13.5 flex-1 rounded-2xl text-base font-semibold focus-ring"
 
 export type EventDetailHeroProps = { event: EventItem }
@@ -30,7 +29,7 @@ export function EventDetailHero({ event }: EventDetailHeroProps) {
     <>
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-2 sm:px-4 lg:hidden">
         <Link
-          href={EVENTS_HREF}
+          href={getEventsSearchHref()}
           aria-label="Volver a eventos"
           className="inline-flex size-11 items-center justify-center rounded-xl focus-ring"
         >
@@ -49,7 +48,7 @@ export function EventDetailHero({ event }: EventDetailHeroProps) {
             </BreadcrumbItem>
             <BreadcrumbSeparator>/</BreadcrumbSeparator>
             <BreadcrumbItem>
-              <BreadcrumbLink className="rounded-sm focus-ring" render={<Link href={EVENTS_HREF} />}>
+              <BreadcrumbLink className="rounded-sm focus-ring" render={<Link href={getEventsSearchHref({ categories: [event.category.id] })} />}>
                 {event.category.label}
               </BreadcrumbLink>
             </BreadcrumbItem>

@@ -7,6 +7,7 @@ import {
 import type { TicketType } from "@/modules/events/types/event.types"
 import { getEventCheckoutHref } from "@/modules/events/utils/event-routes"
 import type {
+  EventSeatMap,
   Seat,
   SeatQuotas,
   SeatRow,
@@ -155,4 +156,33 @@ export function buildSeatCheckoutHref(
     [SEATS_SEARCH_PARAM]: orderedSeatIds.join(SEAT_ID_SEPARATOR),
   })
   return `${getEventCheckoutHref(slug)}?${params}`
+}
+
+/** value: ids separados por "," (array → primer valor; undefined/"" → sin ids). Conserva los ids que existen en el layout
+ *  y no están vendidos, sin repetir (gana el primero). Devuelve el resumen si queda isComplete; si no, null.
+ *  Los asientos de zonas sin cuota se descartan (el resumen no los incluye). */
+export function parseCompleteSeatSelection(
+  value: string | string[] | undefined,
+  seatMap: EventSeatMap,
+  selection: TicketSelection,
+  ticketTypes: readonly TicketType[]
+): SeatSelectionSummary | null {
+  const raw = Array.isArray(value) ? value[0] : value
+  if (!raw) return null
+
+  // buildSeatSelectionSummary ya ignora los ids desconocidos.
+  const sold = new Set(seatMap.soldSeatIds)
+  const seatIds = [...new Set(raw.split(SEAT_ID_SEPARATOR))].filter((id) => !sold.has(id))
+  const summary = buildSeatSelectionSummary(
+    seatMap.layout,
+    ticketTypes,
+    seatIds,
+    getSeatQuotas(seatMap.layout, selection)
+  )
+  return summary.isComplete ? summary : null
+}
+
+/** "Fila F, asiento 12" (mismo texto que el resumen de la 008). */
+export function formatSeatPosition(seat: { rowLabel: string; number: number }): string {
+  return `Fila ${seat.rowLabel}, asiento ${seat.number}`
 }

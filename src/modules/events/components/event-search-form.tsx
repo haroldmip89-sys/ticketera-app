@@ -1,6 +1,7 @@
 "use client"
 
 import { useId, useState, type FormEvent } from "react"
+import { useRouter } from "next/navigation"
 import { Search } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -19,15 +20,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-
-const PRICE_RANGES = [
-  { value: "any", label: "Cualquier precio" },
-  { value: "free", label: "Gratis" },
-  { value: "0-50", label: "$0 - $50" },
-  { value: "50-100", label: "$50 - $100" },
-  { value: "100-200", label: "$100 - $200" },
-  { value: "200+", label: "Más de $200" },
-] as const
+import { getEventsSearchHref } from "@/modules/events/utils/event-routes"
+import {
+  DEFAULT_EVENT_SEARCH_FILTERS,
+  PRICE_RANGES,
+  formatMonthValue,
+  type EventSearchFilters,
+  type PriceRangeValue,
+} from "@/modules/events/utils/event-search"
 
 // Formateador local del navegador (D8): la fecha del Calendar es medianoche local.
 const dateFormatter = new Intl.DateTimeFormat("es", {
@@ -38,16 +38,33 @@ const dateFormatter = new Intl.DateTimeFormat("es", {
 
 const FIELD_LABEL_CLASS = "text-xs font-semibold text-foreground"
 
-export type EventSearchFormProps = { className?: string }
+export type EventSearchFormProps = {
+  className?: string
+  /** Filtros vigentes (en /events). Inicializa query y price; al enviar conserva categories, cities, sort y month (si no se eligió fecha). Default: DEFAULT_EVENT_SEARCH_FILTERS. */
+  filters?: EventSearchFilters
+}
 
-export function EventSearchForm({ className }: EventSearchFormProps) {
+export function EventSearchForm({
+  className,
+  filters = DEFAULT_EVENT_SEARCH_FILTERS,
+}: EventSearchFormProps) {
+  const router = useRouter()
   const priceLabelId = useId()
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState(filters.query)
   const [date, setDate] = useState<Date | undefined>(undefined)
-  const [price, setPrice] = useState<string>("any")
+  const [price, setPrice] = useState<PriceRangeValue>(filters.price)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    router.push(
+      getEventsSearchHref({
+        ...filters,
+        query: query.trim(),
+        price,
+        // D4: el día elegido (medianoche local) se traduce a su mes local.
+        month: date ? formatMonthValue(date.getFullYear(), date.getMonth() + 1) : filters.month,
+      })
+    )
   }
 
   return (

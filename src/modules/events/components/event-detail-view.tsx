@@ -6,6 +6,7 @@ import { EventTicketsPanel } from "@/modules/events/components/event-tickets-pan
 import { PurchaseBar } from "@/modules/events/components/purchase-bar"
 import { eventsService } from "@/modules/events/services/events.service"
 import type { EventItem } from "@/modules/events/types/event.types"
+import { getEventsSearchHref } from "@/modules/events/utils/event-routes"
 
 const RELATED_TITLE_ID = "related-events-title"
 
@@ -33,7 +34,7 @@ export async function EventDetailView({ event }: EventDetailViewProps) {
               titleId={RELATED_TITLE_ID}
               title="También te puede interesar"
               action={{
-                href: "/#eventos",
+                href: getEventsSearchHref({ categories: [event.category.id] }),
                 label: `Ver más ${event.category.label.toLowerCase()}`,
                 className: "hidden lg:inline-flex",
               }}

@@ -1,6 +1,6 @@
 # Design System — Ticketera
 
-- **Estado:** aprobado (creado con `docs/specs/001-design-system-foundations.md`; paleta actualizada por `docs/specs/003-events-module-upcoming-events.md`; tokens `--stage*` y barra de progreso añadidos por `docs/specs/005-featured-events-hero.md`)
+- **Estado:** aprobado (creado con `docs/specs/001-design-system-foundations.md`; paleta actualizada por `docs/specs/003-events-module-upcoming-events.md`; tokens `--stage*` y barra de progreso añadidos por `docs/specs/005-featured-events-hero.md`; tokens `--success*` añadidos por `docs/specs/011-purchase-confirmation.md`)
 - **Alcance:** fundamentos visuales de todo el proyecto (no solo la landing). Fuente de verdad para paleta de color (claro y oscuro), tipografía y principios de layout.
 
 > Inspiración visual (no de contenido) en Ticketmaster y Joinnus: densidad de información moderada, tarjetas de evento con imagen dominante, jerarquía tipográfica clara, CTAs de alto contraste. No se copia texto, logos, ni paletas exactas de esos sitios.
@@ -141,6 +141,17 @@ Token `--mobile-action-bar-height: 5rem` (alto máximo de una barra inferior fij
 
 **Contrato:** la raíz de toda barra inferior fija lleva el atributo `data-mobile-action-bar` y su alto (safe-area incluida) no supera `--mobile-action-bar-height`. Con eso ningún elemento enfocado queda oculto bajo la barra (WCAG 2.4.11) sin compensaciones locales. Consumidores: `PurchaseBar` (006), selección de zonas (007) y mapa de asientos (008).
 
+### 2.3.5 Éxito (spec 011)
+
+Tokens `--success` y `--success-foreground`, mapeados en `@theme inline` como `--color-success` y `--color-success-foreground` (`bg-success`, `text-success-foreground`). Primer consumidor: el círculo con check de "¡Compra confirmada!" (011); después, el estado "Válida" de Mis entradas (013). No sustituyen a `--cta` ni a `--urgent`.
+
+| Token | Claro | Oscuro | Uso |
+|---|---|---|---|
+| `--success` | `oklch(0.962 0.044 156.743)` `#DCFCE7` | `oklch(0.266 0.065 152.934)` `#052E16` | Fondo del indicador de éxito |
+| `--success-foreground` | `oklch(0.527 0.154 150.069)` `#15803D` | `oklch(0.871 0.15 154.449)` `#86EFAC` | Icono y texto sobre `--success` |
+
+Contraste `--success-foreground` sobre `--success`: claro 4.6:1, oscuro 10.6:1 (≥ 4.5:1; en la 011 solo se usa en un icono, que exige ≥ 3:1).
+
 ### 2.4 Tintes de categoría
 
 16 tokens `--cat-<id>-bg` (fondo del tile) y `--cat-<id>-fg` (color del icono). Claro = hex de la referencia. Oscuro = mismo hue, con fondo `oklch(0.30 0.05 H)` e icono `oklch(0.82 0.10 H)`. Se usan con la sintaxis de variables de Tailwind v4: `bg-(--cat-concerts-bg)`, `text-(--cat-concerts-fg)`.
@@ -168,6 +179,7 @@ El icono va sobre un cuadro `bg-card` dentro del tile (blanco en claro, `#18181B
 | `--price` sobre `--card` | 5.2:1 | 7.8:1 |
 | `--price` sobre `--secondary` | 4.7:1 | 6.6:1 |
 | `--urgent-foreground` sobre `--urgent` | 6.4:1 | 11.6:1 |
+| `--success-foreground` sobre `--success` | 4.6:1 | 10.6:1 |
 | `--primary-foreground` sobre `--primary` | 6.3:1 | 5.9:1 |
 | `--primary` sobre `--secondary` (eyebrow, links) | 5.7:1 | 5.0:1 |
 | `--muted-foreground` sobre `--card` / `--secondary` | 7.7:1 / 7.0:1 | 6.9:1 / 5.8:1 |

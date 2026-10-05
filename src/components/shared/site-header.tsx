@@ -7,7 +7,7 @@ import { ThemeToggle } from "@/components/shared/theme-toggle"
 export type SiteNavLink = { href: string; label: string }
 
 export const siteNavLinks: SiteNavLink[] = [
-  { href: "/#eventos", label: "Eventos" },
+  { href: "/events", label: "Eventos" },
   { href: "/#categorias", label: "Categorías" },
   { href: "/#como-funciona", label: "Cómo funciona" },
 ]

@@ -46,6 +46,8 @@
   --color-price: var(--price);
   --color-urgent: var(--urgent);
   --color-urgent-foreground: var(--urgent-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-stage: var(--stage);
   --color-stage-foreground: var(--stage-foreground);
   --color-stage-muted: var(--stage-muted);
@@ -106,6 +108,8 @@
   --price: oklch(0.553 0.174 38.4);
   --urgent: oklch(0.954 0.037 75.2);
   --urgent-foreground: oklch(0.47 0.143 37.3);
+  --success: oklch(0.962 0.044 156.743);
+  --success-foreground: oklch(0.527 0.154 150.069);
   --stage: oklch(0.257 0.09 281.3);
   --stage-foreground: oklch(1 0 0);
   --stage-muted: oklch(0.93 0.034 272.8);
@@ -168,6 +172,8 @@
   --price: oklch(0.758 0.159 55.9);
   --urgent: oklch(0.266 0.076 36.3);
   --urgent-foreground: oklch(0.901 0.073 70.7);
+  --success: oklch(0.266 0.065 152.934);
+  --success-foreground: oklch(0.871 0.15 154.449);
   --stage: oklch(0.257 0.09 281.3);
   --stage-foreground: oklch(1 0 0);
   --stage-muted: oklch(0.93 0.034 272.8);

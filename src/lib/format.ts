@@ -68,6 +68,12 @@ export function formatDateLong(value: string | Date): string {
   return `${LONG_WEEKDAYS[weekday]} ${day} de ${LONG_MONTHS[month - 1]}`
 }
 
+/** "domingo 4 de octubre de 2026" en APP_TIME_ZONE: formatDateLong + " de {año}" (solo el PDF). */
+export function formatDateLongWithYear(value: string | Date): string {
+  const { year } = getZonedDateParts(value)
+  return `${formatDateLong(value)} de ${year}`
+}
+
 /** "8:00 p. m." en APP_TIME_ZONE (12 h; 00:00 → "12:00 a. m."; 12:00 → "12:00 p. m."). */
 export function formatTime(value: string | Date): string {
   const { hour, minute } = getZonedDateParts(value)

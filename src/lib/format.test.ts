@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   formatDateBadge,
   formatDateLong,
+  formatDateLongWithYear,
   formatDateShort,
   formatPrice,
   formatTime,
@@ -55,6 +56,21 @@ describe("formatDateLong", () => {
   it("accepts a Date", () => {
     const value = "2026-10-03T20:00:00-05:00"
     expect(formatDateLong(new Date(value))).toBe(formatDateLong(value))
+  })
+})
+
+describe("formatDateLongWithYear", () => {
+  it.each([
+    ["2026-10-04T16:00:00-05:00", "domingo 4 de octubre de 2026"],
+    ["2026-12-31T20:00:00-05:00", "jueves 31 de diciembre de 2026"],
+  ])("formats %s as %s", (value, expected) => {
+    expect(formatDateLongWithYear(value)).toBe(expected)
+  })
+
+  it("accepts a Date", () => {
+    expect(formatDateLongWithYear(new Date("2026-10-04T16:00:00-05:00"))).toBe(
+      "domingo 4 de octubre de 2026"
+    )
   })
 })
 

@@ -2,6 +2,7 @@
 
 - **Fecha:** 2026-10-04
 - **Estado:** en revisión del usuario
+- **Actualizado:** 2026-10-07 — detalle del login con Google (§3.1, §3.3, §4.1.1), variables de entorno (§3.4) y espejo de métodos de ingreso en `users` (§6.3, §6.4).
 - **Alcance:** arquitectura del sistema (ambientes, componentes, autenticación, roles, pagos, flujo de compra) y modelo entidad-relación de la base de datos. Este documento **no** implementa código, migraciones ni infraestructura.
 - **Base:** la UI ya construida (specs 001–008) y el diseño de referencia analizado en `docs/design/reference-design.md` (21 pantallas: landing, búsqueda, detalle, entradas, checkout, confirmación, login, mis entradas, panel de organizador, crear evento).
 
@@ -55,6 +56,8 @@ flowchart LR
   B[Navegador] -->|HTTPS| N[Next.js en Cloud Run]
   N -->|Drizzle| DB[(Postgres: Neon / Cloud SQL)]
   N -->|SDK| CL[Clerk]
+  B -->|redirect OAuth| CL
+  CL -->|OAuth 2.0 / OIDC| GO[Google Identity]
   N -->|SDK| ST[Stripe Connect]
   N -->|URL firmada| GCS[Cloud Storage]
   N -->|API| RS[Resend]
@@ -85,10 +88,11 @@ Los mocks actuales (`events.mock.ts`, `ticket-types.mock.ts`, `zone-maps.mock.ts
 | Base | Neon Postgres (branch `dev`; branches por PR opcionales) | Cloud SQL Postgres vía Cloud SQL Connector |
 | Archivos | Bucket GCS `…-dev` | Bucket GCS `…-prod` |
 | Clerk | Instancia de desarrollo | Instancia de producción |
+| Google OAuth | Credenciales compartidas de Clerk; no se configura nada en Google Cloud | OAuth client propio (Google Cloud → Credentials, tipo Web) con el *Authorized redirect URI* que indica Clerk; pantalla de consentimiento publicada |
 | Stripe | Modo test; `stripe listen` reenvía webhooks a localhost | Modo live; endpoint de webhook firmado |
 | Correo | Resend en sandbox | Resend con dominio verificado |
 | Maps | Desactivado: placeholder estático del lugar | Maps JavaScript API, key restringida al dominio |
-| Secretos | `.env.local` | Secret Manager montado como variables de entorno |
+| Secretos | `.env` o `.env.local` (plantilla versionada en `.env.example`) | Secret Manager montado como variables de entorno |
 | Tareas programadas | No hacen falta (vencimiento al leer) | Cloud Scheduler → `POST /api/cron/release-holds` |
 
 Reglas transversales:
@@ -98,18 +102,40 @@ Reglas transversales:
 - **Migraciones:** se generan con `drizzle-kit generate` y se versionan en el repo. En local se aplican contra Neon. En producción se aplican en el pipeline (Cloud Build o GitHub Actions) antes del despliegue, como un Cloud Run Job.
 - **Cron:** `/api/cron/release-holds` exige un token OIDC de la cuenta de servicio de Cloud Scheduler; responde 401 sin él.
 
+### 3.4 Variables de entorno
+
+La plantilla es `.env.example` (versionada, sin valores). En local se copia a `.env` o `.env.local`, ambos ignorados por git. Solo las `NEXT_PUBLIC_*` llegan al navegador.
+
+| Variable | Servicio | Obligatoria desde |
+|---|---|---|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | Clerk | Login (spec 013); `next build` falla sin ellas |
+| `CLERK_WEBHOOK_SIGNING_SECRET` | Clerk (webhook → `users`) | Base de datos |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe | Pagos reales |
+| `DATABASE_URL` | Neon (local) / Cloud SQL (prod) | Base de datos |
+
+Google no tiene variables propias en la app: sus credenciales se cargan en el Dashboard de Clerk.
+
 ---
 
 ## 4. Autenticación y roles
 
 ### 4.1 Identidad
 
-- Clerk gestiona sesiones, contraseñas, verificación de email y login con Google.
+- Clerk gestiona sesiones, contraseñas, verificación de email y login con Google (§4.1.1).
 - Las pantallas de login y registro se construyen con los hooks de Clerk (`useSignIn`, `useSignUp`) para respetar el diseño de referencia (`Auth`/`AuthMobile`), no con los componentes prearmados.
 - **Espejo en la base:** tabla `users` con `clerk_user_id` único.
   - Se sincroniza por webhook de Clerk (`user.created`, `user.updated`, `user.deleted`).
   - Además hay un *upsert* en el primer request autenticado, por si el webhook llega tarde.
   - `user.deleted` **anonimiza** la fila (email y nombre reemplazados, `deleted_at` con fecha). No se borra, para conservar las órdenes.
+
+#### 4.1.1 Login con Google
+
+- **Flujo:** el botón "Continuar con Google" de `/sign-in` y `/sign-up` inicia el SSO de Clerk (`signIn.sso` / `signUp.sso`, API de Clerk Core 3). El navegador va a Google, vuelve a Clerk y termina en `/sso-callback`, que completa la sesión y redirige al destino (`redirect_url` validado o `/`).
+- **Un solo usuario por persona:** si el correo de Google ya existe y está verificado, Clerk vincula la cuenta de Google a ese usuario (no crea otro). Un usuario puede tener contraseña, Google o ambos; siempre es **una** fila en `users` (`clerk_user_id`).
+- **Datos que trae Google:** correo (verificado), nombre, apellido y foto. El webhook los copia a `users.email`, `full_name` y `avatar_url`, y registra el método en `users.auth_providers` (§6.4). La app nunca guarda tokens de Google.
+- **Requisitos en Clerk:** teléfono y username desactivados o no obligatorios, y nombre/apellido opcionales. Si no, el alta por Google queda en `missing_requirements`.
+- **Sin Google:** si la conexión está desactivada o falla, la pantalla muestra un error legible y el login con email/contraseña sigue funcionando.
+- **Producción:** OAuth client propio de Google (§3.3). Con las credenciales compartidas de desarrollo, Google muestra "Clerk" en la pantalla de consentimiento.
 
 ### 4.2 Roles
 
@@ -321,6 +347,7 @@ erDiagram
 | `ticket_status` | `valid`, `used`, `void` |
 | `transfer_status` | `pending`, `accepted`, `cancelled` |
 | `webhook_provider` | `stripe`, `clerk` |
+| `auth_provider` | `password`, `google` |
 
 ### 6.4 Tablas
 
@@ -333,7 +360,8 @@ erDiagram
 | `clerk_user_id` | text | único, not null |
 | `email` | text | único (case-insensitive), not null |
 | `full_name` | text | |
-| `avatar_url` | text | viene de Clerk |
+| `avatar_url` | text | viene de Clerk (foto de Google si entra con Google) |
+| `auth_providers` | auth_provider[] | not null, default `{}`; métodos de ingreso vinculados en Clerk (`password_enabled` y `external_accounts`). Solo informativo (soporte, admin); **no** se usa para autorizar |
 | `phone` | text | null |
 | `staff_role` | staff_role | null = sin rol de staff |
 | `deleted_at` | timestamptz | null; anonimizado si tiene valor |
@@ -517,7 +545,7 @@ Check: si `layout_id` no es null, debe pertenecer a `venue_id`. Índices: `(stat
 | Asientos | `seats`, `seat_allocations` | `seat_allocations` (`held`) |
 | Checkout | `reservations`, `platform_settings` | `orders`, `order_items` |
 | Confirmación | `orders`, `tickets` | (webhook) `tickets`, `seat_allocations`, `ticket_types` |
-| Login/registro | Clerk | (webhook) `users` |
+| Login/registro (email o Google) | Clerk | (webhook) `users`, incluido `auth_providers` |
 | Mis entradas | `tickets`, `orders`, `events` | `ticket_transfers` |
 | Panel de organizador | `events`, `ticket_types`, `orders` | `events` (estado) |
 | Crear evento | `categories`, `venues` | `events`, `ticket_types`, `venues` (simple) |
@@ -574,4 +602,5 @@ Los efectos secundarios (correo, PDF/QR, liberar reservas, procesar webhooks) se
 - **Datos mock:** usan ciudades de Perú (Lima, Arequipa) y zona horaria `America/Lima`. Al pasar a la base, los datos de *seed* deben usar ciudades y zonas horarias de EE. UU.
 - **`src/lib/date-time.ts`:** hoy formatea con la zona fija `America/Lima`. Debe pasar a usar `venues.timezone`.
 - **Services:** `eventsService` y `seatingService` cambian su implementación (de mocks a Drizzle) pero mantienen sus contratos.
-- **Nuevas pantallas sin spec todavía:** checkout y confirmación, login, Mis entradas, panel de organizador, crear evento, check-in y administración.
+- **Roles provisionales (spec 015):** mientras no exista la base, organizador = `publicMetadata.isOrganizer === true` en Clerk, verificado en el servidor con `requireOrganizer()`. Es una excepción **temporal** a §4.2: al crear `users`/`organizer_profiles`, los guards pasan a leer la base y `publicMetadata` vuelve a ser solo espejo.
+- **Pantallas con spec:** checkout y confirmación (010–012), login y registro con Google (013–014), roles provisionales (015), Mis entradas (016), panel de organizador (017) y crear evento (018). **Sin spec todavía:** check-in y administración.

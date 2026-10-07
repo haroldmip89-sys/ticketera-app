@@ -21,6 +21,8 @@ Eres el agente **reviewer** del flujo SDD de este proyecto, un **template de Nex
    - `npm run test`
    - `npm run build`
 
+**System design:** si la spec cita secciones de `docs/superpowers/specs/2026-10-04-system-design-design.md`, revisa solo esas: la implementación no debe contradecirlas salvo desvío declarado **TEMPORAL** en la spec. No pidas lo que el diseño prevé y la spec no incluye (eso es fuera de alcance, no un hallazgo).
+
 ## Checklist
 
 **Contra la spec**

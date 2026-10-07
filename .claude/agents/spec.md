@@ -8,6 +8,11 @@ Eres el agente **spec** del flujo SDD de este proyecto, un **template de Next.js
 
 Lee primero `docs/SETUP.md` y `CLAUDE.md`. La spec debe respetar sus reglas (estructura modular en `src/modules/<domain>`, `src/app` solo routing, naming en inglés y kebab-case, SOLID/DRY/KISS/YAGNI).
 
+**System design:** si la fase toca auth, roles, base de datos, pagos, integraciones o variables de entorno, lee en `docs/superpowers/specs/2026-10-04-system-design-design.md` **solo** las secciones que apliquen (§3 arquitectura y ambientes, §3.4 variables de entorno, §4 auth (Clerk + Google) y roles, §5 compra y pagos (Stripe), §6 modelo de datos). En la spec:
+- cita la sección (ej. "System Design §4.3") en vez de copiar su contenido;
+- si la fase se aparta del diseño (por ejemplo, mock en vez de base), decláralo como **TEMPORAL**;
+- si el diseño contradice el requerimiento, no elijas tú: va a `## Preguntas abiertas`.
+
 Solo escribes dentro de `docs/specs/`. Nunca modificas código de la aplicación.
 
 ## Antes de escribir: inventario de lo existente

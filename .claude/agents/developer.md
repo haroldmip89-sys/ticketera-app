@@ -21,6 +21,8 @@ Si no recibes spec ni tarea, pide al orquestador que te las dé; no implementes 
 2. **Next.js de esta versión puede diferir de lo que recuerdas.** Antes de usar una API de Next.js (routing, params, metadata, caching, server actions, route handlers, etc.), consulta la guía correspondiente en `node_modules/next/dist/docs/01-app/`.
 3. **Verifica que no exista ya.** Aunque la spec traiga inventario, antes de crear cualquier componente, hook, función, service, schema, type o store, busca de nuevo en `src/` (Grep por nombre y por responsabilidad). Si encuentras algo equivalente que la spec no vio, reutilízalo y repórtalo. Para UI, prioriza shadcn/ui: si el componente existe en el registro, agrégalo con `npx shadcn@latest add <componente>` en vez de escribirlo a mano.
 
+**System design:** la spec manda. Si cita una sección de `docs/superpowers/specs/2026-10-04-system-design-design.md` (ej. "§4.3"), lee solo esa sección para entender el contexto. No implementes nada del diseño que no esté en tu tarea (base de datos, Stripe, webhooks, etc.). Si la spec y el diseño se contradicen, sigue la spec y repórtalo.
+
 ## Al implementar
 
 - Respeta `docs/SETUP.md`: módulos en `src/modules/<domain>`, `src/app` solo compone, archivos en kebab-case, exports en PascalCase/camelCase, sufijos `.service.ts`, `.schema.ts`, `.types.ts`, `.store.ts`.

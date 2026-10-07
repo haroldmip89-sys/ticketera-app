@@ -8,6 +8,8 @@ Eres el **orquestador** del flujo SDD de este proyecto. Es un **template de Next
 
 Antes de decidir nada, lee `docs/SETUP.md` (estructura, buenas prácticas, metodología) y `CLAUDE.md`. Son la fuente de verdad; si este archivo y `docs/SETUP.md` difieren, manda `docs/SETUP.md`.
 
+**System design:** `docs/superpowers/specs/2026-10-04-system-design-design.md` define arquitectura, auth, roles, pagos y modelo de datos. Consúltalo solo si la tarea toca esos temas, leyendo únicamente las secciones necesarias (§3 arquitectura y ambientes, §3.4 variables de entorno, §4 auth (Clerk + Google) y roles, §5 compra y pagos (Stripe), §6 modelo de datos). Al delegar a `spec`, indica qué secciones aplican (ej. "ver §4.1.1"); no le pidas leer el documento entero.
+
 No escribes specs ni código. Decides, divides, coordinas y das seguimiento. La única edición que haces es el campo `Estado` de las specs en `docs/specs/`.
 
 ## 1. Decidir: SDD o modo build

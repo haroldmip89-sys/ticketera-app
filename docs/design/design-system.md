@@ -56,7 +56,7 @@ Formato: valores en `oklch()` (compatibles con Tailwind v4 y shadcn), convertido
 | `--input` | `oklch(0.871 0.005 286.3)` | `#D4D4D8` | Bordes de inputs, chips inactivos y botones outline |
 | `--ring` | `oklch(0.585 0.204 277.1)` | `#6366F1` | Foco (indigo-500: el `#818CF8` de la referencia da 2.98:1 contra blanco, por debajo de 3:1) |
 | `--chart-1` … `--chart-5` | sin cambios | — | Reservado para futuras visualizaciones |
-| `--sidebar*` | sin cambios respecto al scaffold | — | No se usa sidebar en este producto (YAGNI) |
+| `--sidebar*` | alias de tokens del proyecto (`--sidebar`→`--card`, `-foreground`→`--foreground`, `-primary`→`--primary`, `-primary-foreground`→`--primary-foreground`, `-accent`→`--accent`, `-accent-foreground`→`--accent-foreground`, `-border`→`--border`, `-ring`→`--ring`) | — | Shell de administración (spec 023); ver §4 "Shell de administración" |
 
 ### 2.2 Modo oscuro (`.dark`)
 
@@ -80,7 +80,7 @@ Formato: valores en `oklch()` (compatibles con Tailwind v4 y shadcn), convertido
 | `--input` | `oklch(0.442 0.015 285.8)` | `#52525B` | Bordes de inputs, chips inactivos y botones outline |
 | `--ring` | `oklch(0.785 0.104 274.7)` | `#A5B4FC` | Foco |
 | `--chart-1` … `--chart-5` | sin cambios | — | Reservado para futuras visualizaciones |
-| `--sidebar*` | sin cambios respecto al scaffold | — | No se usa sidebar (YAGNI) |
+| `--sidebar*` | mismos alias que en claro (resuelven al valor oscuro de cada token) | — | Shell de administración (spec 023) |
 
 ### 2.3 Tokens semánticos
 
@@ -240,6 +240,26 @@ Reglas:
 - **Superficies tintadas sin token propio (spec 004, D6):** se aproximan con tokens existentes y opacidad, no con literales hex. Tarjeta del newsletter (`#EEF2FF` en la referencia) → `bg-primary/10`; footer (`#FAFAFA`) → `bg-secondary/60`; borde del input del newsletter (`#C7D2FE`) → `border-primary/30`. En oscuro resultan superficies índigo/zinc oscuras legibles sin valores extra.
 - **Radios:** se mantiene la escala de `--radius` ya definida en el scaffold (`--radius: 0.625rem` como base, con `sm/md/lg/xl/2xl/3xl/4xl` derivados). Encaja con el tono "moderno, no corporativo-cuadrado" sin necesidad de cambiarla.
 - **Elevación:** sombras discretas (`shadow-sm`/`shadow-md` de Tailwind) para tarjetas y el popup del menú móvil; evitar sombras pesadas o múltiples capas de sombra.
+
+### Shell de administración (spec 023)
+
+- **Anchos:** sidebar expandido 264 px (`--sidebar-width: 16.5rem`), rail colapsado 76 px (`--sidebar-width-icon: 4.75rem`), fijados vía `style` del `SidebarProvider`. En móvil usa el drawer (`Sheet`) del componente shadcn.
+- **Ítem activo:** `bg-primary/10 text-primary`; hover neutro `bg-accent`; foco con `focus-ring`.
+- **Badge `success`:** nueva variante de `Badge` (`bg-success text-success-foreground`, tokens de §2.3.5) para estados "Aprobado". Los estados siempre llevan texto, no solo color.
+- **Equivalencias del diseño (D1 de la spec 023):** no se agregan hex nuevos.
+
+| Diseño | Token del proyecto |
+|---|---|
+| Fondo de página `#F8FAFC`, cards blancas, bordes `#E5E7EB` | `bg-muted/40`, `bg-card`, `border-border` |
+| Texto `#111827` / `#4B5563` / `#6B7280` | `text-foreground` / `text-muted-foreground` |
+| Ítem activo `#EEF2FF` + `#4338CA` | `bg-primary/10 text-primary` |
+| Hover `#F3F4F6` | `bg-accent` |
+| Botón primario `#4F46E5` / peligro `#B91C1C` | `Button` default / `variant="destructive"` |
+| Foco `2px #4F46E5` | `focus-ring` (§2.6) |
+| Radios 10–20 px | escala `--radius` (`rounded-lg/xl/2xl`) |
+| Aviso de éxito `#DCFCE7` / `#166534` | `bg-success text-success-foreground` |
+
+Al resolver a tokens ya verificados (§2.5), el contraste del shell hereda el de `--foreground`/`--card`/`--primary` en ambos temas.
 
 ---
 

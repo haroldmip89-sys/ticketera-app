@@ -1,78 +1,87 @@
-# 016 — Mis entradas (pedidos y entradas del usuario, datos mock)
+# 016 — Mis entradas (pedidos y entradas del usuario, leídos de la base de datos)
 
 - **Estado:** draft
+- **Actualizada tras 019–023:** 2026-10-08. Antes la spec usaba un mock fijo y el nombre de Clerk; ahora lee `tickets`/`orders`/`events` con Drizzle y usa el contexto de acceso de la 020. Debe **volver a aprobarse**.
 - **Modo:** SDD
 - **Módulo(s):**
-  - `src/modules/tickets` (**módulo nuevo**, plural: colección de entradas; nombre del System Design §3.2): types, data mock, utils puros, service y componentes de Mis entradas.
-  - `src/modules/checkout` (extiende): `order-confirmation.ts` expone la numeración de entradas; hook nuevo `useTicketDownloads`, extraído de `ConfirmationActions`; "Ver mis entradas" pasa a ser un link a `/my-tickets`.
+  - `src/modules/tickets` (**módulo nuevo**, plural: colección de entradas; System Design §3.2): types, utils puros, service con Drizzle y componentes de Mis entradas.
+  - `src/modules/checkout` (extiende): `order-confirmation.ts` expone la numeración de entradas y el tipo `TicketDocumentEvent`; los generadores de PDF/ICS aceptan ese tipo; hook nuevo `useTicketDownloads`, extraído de `ConfirmationActions`; "Ver mis entradas" pasa a ser un link a `/my-tickets`.
   - `src/components/ui/tabs.tsx` (shadcn, nuevo).
   - Ruta: `src/app/(site)/my-tickets/page.tsx` (reemplaza el placeholder de la 013).
   - `docs/design/design-system.md`: solo se corrige la referencia "Mis entradas (013)" de §2.3.5.
-- **Depende de:** 001–012 `done` y **013, 014 y 015 en `done` antes de implementar** (hoy están en `draft`). Consume:
-  - **013:** `MY_TICKETS_PATH` (`src/lib/auth/auth-routes.ts`); `src/proxy.ts` ya exige sesión en `/my-tickets`; el placeholder `src/app/(site)/my-tickets/page.tsx` (C12); el header con sesión ("Mi cuenta" y el link "Mis entradas" con `aria-current`), que no se toca.
-  - **015:** `requireUser(options?) → { userId }` (`src/lib/auth/guards.ts`).
-  - **Clerk:** `currentUser()` de `@clerk/nextjs/server` (necesita `CLERK_SECRET_KEY`, ya exigida por la 015).
-  - **011/012:** `ConfirmationTicket` y `buildConfirmationTickets` (`order-confirmation.ts`), `DecorativeQr`, `ConfirmationActions`, `buildTicketPdfPages`, `getTicketPdfFileName`, `generateTicketPdf`, `buildEventCalendar`, `getCalendarFileName`, `CALENDAR_MIME_TYPE`, `downloadBlob`.
-  - **events / seating / lib:** `eventsService` (`getAll`, `getTicketTypes`, `getReferenceDate`), `getEventsSearchHref`, `formatSeatPosition`, `formatDateBadge`, `formatDateShort`, `formatDateLong`, `formatTime`, `isOrderCode`, `Empty*`, `Button`, `focus-ring`, token `--success-foreground`.
-- **Roadmap:** 013 Auth base · 014 Registro y recuperación · 015 Roles y alta de organizador · **016 Mis entradas (esta)** · 017 Panel de organizador · 018 Crear evento.
-- **Diseño fuente:** `docs/design/reference-design.md` §2.9 (y §2.7 para coherencia con la confirmación), y los lienzos `MyTickets` / `MyTicketsMobile`. La ruta original no es durable, así que lo necesario se transcribe en la sección "Diseño". System Design: §3.2 (dominios), §5.4 (las entradas nacen al confirmarse el pago), §6.3 (`ticket_status`), §6.4 (`orders`, `tickets.holder_user_id`) y §6.5 (Mis entradas lee `tickets`, `orders` y `events`).
+- **Depende de:**
+  - **013, 014, 015, 019, 020 en `done` antes de implementar** (019–023 ya están implementadas en el árbol de trabajo; 013–015 siguen `draft`/pendientes de cierre). Consume:
+    - **013:** `MY_TICKETS_PATH` (`src/lib/auth/auth-routes.ts`); `src/proxy.ts` ya exige sesión en `/my-tickets`; el header con sesión, que no se toca.
+    - **020:** `requireUser(options?) → AccessContext` (`src/lib/auth/guards.ts`), con `userId` = `users.id` (uuid del espejo, enlazado a Clerk por `clerk_user_id`), `email` y `displayName`.
+    - **019:** esquema Drizzle (`src/db/schema`: `tickets`, `orders`, `order_items`, `events`, `venues`, `ticket_types`, `seats`) y `getDb()` (`src/db/client.ts`).
+    - **011/012:** `ConfirmationTicket`, `createConfirmationTickets` (se extrae aquí), `DecorativeQr`, `ConfirmationActions`, `buildTicketPdfPages`, `getTicketPdfFileName`, `generateTicketPdf`, `buildEventCalendar`, `getCalendarFileName`, `CALENDAR_MIME_TYPE`, `downloadBlob`.
+    - **lib / events / seating:** `getEventsSearchHref`, `formatSeatPosition`, `formatDateBadge`, `formatDateShort`, `formatDateLong`, `formatTime`, `Empty*`, `Button`, `focus-ring`, token `--success-foreground`.
+  - **Precondición de datos (ver D0):** hoy **ningún flujo crea `orders`/`tickets` en la base**. El checkout sigue con mocks (`checkout-order.ts`, código aleatorio `createMockOrderCode`) y el seed de la 022 solo crea catálogo y eventos. Esta spec entrega la **lectura** correcta; con la base sin pedidos la pantalla muestra los estados vacíos.
+- **Roadmap:** 013 Auth base · 014 Registro y recuperación · 015 Roles y alta de organizador · 019–023 Base de datos, identidad y admin · **016 Mis entradas (esta)** · 017 Panel de organizador · 018 Crear evento. Pendiente fuera de este roadmap: **compra real** (reserva, Stripe y emisión de entradas, System Design §5.2–§5.4), que es lo que pobla `orders`/`tickets`.
+- **Diseño fuente:** `docs/design/reference-design.md` §2.9 (y §2.7 para coherencia con la confirmación), y los lienzos `MyTickets` / `MyTicketsMobile`. La ruta original no es durable, así que lo necesario se transcribe en la sección "Diseño". System Design: §3.2 (dominios), §5.4 (las entradas nacen al confirmarse el pago), §6.3 (`ticket_status`), §6.4 (`orders`, `tickets.holder_user_id`, índice `tickets_holder_user_id_idx`) y §6.5 (Mis entradas lee `tickets`, `orders` y `events`).
 
 ## Objetivo
 
-Reemplazar el placeholder de `/my-tickets` por la pantalla real de **Mis entradas**, en desktop y móvil, con datos mock:
+Reemplazar el placeholder de `/my-tickets` por la pantalla real de **Mis entradas**, en desktop y móvil, leyendo de la base:
 
-- pestañas **Próximas | Pasadas**, separadas por la fecha del evento respecto de "ahora";
-- lista de pedidos del usuario;
-- la entrada seleccionada del pedido, con QR decorativo, "Entrada N de M" y anterior/siguiente;
-- Zona, Titular (nombre del usuario de Clerk), Código y Estado;
+- las entradas se obtienen con un service Drizzle filtrado por `tickets.holder_user_id = <users.id del usuario autenticado>`; nunca por un parámetro del cliente;
+- pestañas **Próximas | Pasadas**, separadas por la fecha del evento respecto de "ahora" (hora real del servidor);
+- lista de pedidos del usuario; la entrada seleccionada con QR decorativo, "Entrada N de M" y anterior/siguiente;
+- Zona, Titular (nombre del usuario en la base), Código y Estado;
 - "Descargar PDF" y "Agregar al calendario" reales, reutilizando la 012;
-- estado vacío de "Pasadas".
+- estados vacíos de "Próximas" y "Pasadas".
 
 Además, "Ver mis entradas" de la confirmación deja de ser un mensaje mock y navega a `/my-tickets`. El proyecto queda en verde.
 
 ## Fuera de alcance
 
-- **Persistencia.** No hay base: los pedidos son un mock fijo, el mismo para cualquier usuario con sesión. Una compra hecha en el checkout **no** aparece en Mis entradas. Por eso "Ver mis entradas" no puede preseleccionar el pedido recién creado: su código es aleatorio y no existe en el mock (ver D6). Llegará con `orders`/`tickets` (System Design §5.4 y §6.4).
-- **Deep link a un pedido** (`/my-tickets?order=…` o `/my-tickets/[code]`). Se suma cuando existan pedidos persistidos (D5).
-- Transferencias (§5.7), reembolsos (§5.6), check-in (§5.8) y el QR real (`tickets.qr_token`). El QR sigue siendo el patrón decorativo de la 011.
-- Estados "Usada" y "Anulada" con datos reales. El tipo y sus textos existen (D8), pero todas las entradas del mock son `valid`.
-- PDF de una sola entrada. "Descargar PDF" descarga el pedido completo, igual que en la confirmación (D9).
+- **Crear pedidos y entradas** (reserva, pago Stripe, webhook, `qr_token`, `seat_allocations` en `sold`): es la spec de **compra real** (System Design §5). Hasta entonces, una compra hecha en el checkout mock **no** aparece en Mis entradas (D0, pregunta Q1).
+- **Seed de pedidos/entradas de desarrollo.** El seed de la 022 no los crea. Si se quiere ver datos antes de la compra real, es una spec propia (Q1).
+- **Deep link a un pedido** (`/my-tickets?order=…` o `/my-tickets/[code]`) y preselección del pedido recién comprado (D5, D6).
+- Transferencias (§5.7, `ticket_transfers`), reembolsos (§5.6), check-in (§5.8) y el **QR real** (`tickets.qr_token`). El QR sigue siendo el patrón decorativo de la 011 (D2).
+- PDF de una sola entrada: "Descargar PDF" descarga el pedido completo (D9).
 - Paginación o búsqueda de pedidos.
-- El header con sesión: lo resuelven 013 y 015 y no se modifica.
-- Ciudades y zona horaria de EE. UU. Los mocks siguen con Perú y `America/Lima` (System Design §11).
+- Pasar `eventsService`/checkout a la base: esta spec solo lee la base en `tickets`; no toca `eventsService`.
+- Zona horaria por recinto (`venues.timezone`) y moneda distinta de USD: los formateadores de `src/lib/format.ts` siguen como están (System Design §11).
+- El header con sesión: lo resuelven 013 y 015.
 
 ## Decisiones (criterio propio, revisables al aprobar)
 
-- **D1 — Módulo `src/modules/tickets`.** La pantalla lista entradas cuyo titular es el usuario (`tickets.holder_user_id`, índice "Mis entradas" en §6.4), agrupadas por pedido. Es el dominio `tickets` del System Design §3.2. No se crea `orders`: hoy no hay lógica de pedidos propia (YAGNI). El tipo `UserOrder` vive en `tickets` como "agrupación de entradas del usuario".
-- **D2 — Los pedidos mock guardan unidades, no query strings.** Cada registro lista sus entradas (`ticketTypeId` y, en teatro, `{ rowLabel, number }`). No se reconstruyen con `parseConfirmationState`: en teatro, ese parser descarta los asientos que figuran como vendidos en `seat-maps.mock.ts`, y los asientos comprados son justamente vendidos. Para no duplicar la numeración (`key`, `position`, `total`, `qrSeed`), `order-confirmation.ts` expone `createConfirmationTickets`, y `buildConfirmationTickets` pasa a delegar en ella. Así, la entrada de un pedido mock es **idéntica** a la que mostraría la confirmación de ese mismo pedido (mismo QR).
-- **D3 — "Ahora" = `eventsService.getReferenceDate()`** (`MOCK_REFERENCE_DATE`, 2026-10-02), el mismo "hoy" de la landing y de la búsqueda. Todos los eventos del mock son posteriores, así que **"Pasadas" queda vacía**: se ve el estado vacío del diseño, que el lienzo también muestra en 0. No se agrega un evento pasado a `EVENTS_MOCK`, porque cambiaría la landing, la búsqueda, los relacionados y sus tests. Las dos ramas (Pasadas con y sin pedidos) se prueban con fecha inyectada (`splitOrdersByEventDate`, test del service y test de la vista).
-  - Criterio: un pedido es "próximo" si `startsAt >= now` (inclusivo, igual que `getUpcoming`) y "pasado" si `startsAt < now`.
-  - Orden: Próximas por `startsAt` ascendente; Pasadas por `startsAt` descendente (la más reciente primero).
-- **D4 — Titular desde el servidor.** La página llama `requireUser({ returnTo: MY_TICKETS_PATH })` (defensa en profundidad además del proxy; 015 lo exige para páginas con datos del usuario) y luego `currentUser()`.
-  - El nombre se resuelve con `getHolderName`: `fullName` → email principal → "Sin nombre".
-  - Se elige servidor y no `useUser()` para que el `dl` no parpadee con un placeholder. La página ya es dinámica por `requireUser()`.
-  - Costo: una llamada al Backend API de Clerk por request, la misma que ya usan los guards de la 015.
-  - El nombre del mock (`buyer_name`) no se usa: el titular es el usuario, no el comprador.
-- **D5 — Selección en estado local, no en la query.** Pestaña, pedido y entrada viven en `useState`. Motivos:
-  1. Con `?order=` en la URL, cada clic navegaría y re-renderizaría la página de servidor, que llama `requireUser()` y `currentUser()` (Backend API) en cada cambio.
-  2. Hoy no hay un enlace entrante que la use (D6).
-  3. Es estado efímero de UI.
-
-  Al cambiar de pedido, la entrada vuelve a la 1 (`TicketDetail` con `key={orderCode}`).
-- **D6 — "Ver mis entradas" → `/my-tickets`, sin preselección.** El código del pedido recién comprado es aleatorio (`createMockOrderCode`) y no está en el mock. Para no confundir, Mis entradas muestra una nota de modo demo (criterio propio): "Modo demo: estas entradas son de ejemplo. Tus compras todavía no se guardan aquí."
+- **D0 — Fuente de datos y precondición.**
+  - `ticketsService.getUserOrders(userId)` consulta la base con Drizzle (`getDb()`), une `tickets` con `orders`, `order_items`, `events`, `venues`, `ticket_types` y `seats` (izquierda), y filtra `tickets.holder_user_id = userId`.
+  - `userId` es **siempre** `requireUser().userId` (uuid de `users`). La página no lee `searchParams`, no hay Server Action ni Route Handler en esta spec, y el service no recibe filtros del cliente.
+  - **Precondición:** `orders`/`tickets` los crea la compra real (futura). **Estado de transición (TEMPORAL):** mientras no exista, la tabla está vacía y la pantalla muestra los dos estados vacíos; los criterios de datos se verifican con tests y fixtures. Datos reales de desarrollo → Q1.
+  - No se muestran entradas de otro titular, aunque el pedido sea del usuario (`orders.user_id` no filtra): una entrada transferida deja de ser visible para quien la transfirió (§5.7).
+- **D1 — Módulo `src/modules/tickets`.** Es el dominio `tickets` del System Design §3.2. No se crea `orders`: no hay lógica de pedidos propia (YAGNI). `UserOrder` es una agrupación de las entradas del usuario por pedido.
+- **D2 — Entradas desde filas planas + numeración compartida.**
+  - El service devuelve filas planas (`UserTicketRow`); la agrupación y el armado de `UserOrder` son una función pura (`buildUserOrders`), testeable sin base.
+  - La numeración (`key`, `position`, `total`, `qrSeed`) reutiliza `createConfirmationTickets` (extraída de `buildConfirmationTickets`): la entrada de Mis entradas es del mismo tipo `ConfirmationTicket` que la confirmación.
+  - `position`/`total` son relativos a **las entradas que el usuario tiene en ese pedido**, ordenadas por `tickets.created_at` y luego `tickets.id`.
+  - `unitPrice` = `order_items.unit_price_cents / 100` (lo pagado, no el precio vigente del tipo).
+  - **TEMPORAL:** `qrSeed` sale del código del pedido, como en la confirmación; el QR real (`qr_token`) llega con check-in (§5.8). `qr_token` **no** se selecciona ni viaja al cliente.
+- **D3 — "Ahora" = hora real del servidor** (`new Date()` en la página, serializado como ISO). Antes era `getReferenceDate()` (mock). Las dos ramas se prueban con fecha inyectada.
+  - "Próximo" si `startsAt >= now` (inclusivo); "pasado" si `startsAt < now`.
+  - Orden: Próximas por `startsAt` ascendente; Pasadas por `startsAt` descendente.
+- **D4 — Titular desde el contexto de acceso.** La página llama `requireUser({ returnTo: MY_TICKETS_PATH })` (defensa en profundidad además del proxy) y usa `displayName`/`email` del `AccessContext` (espejo en base de la 020). Ya no se llama a `currentUser()` ni al Backend API de Clerk. `getHolderName`: `displayName` → `email` → "Sin nombre". El titular mostrado es el usuario autenticado, que es el `holder_user_id` de todas las entradas listadas.
+- **D5 — Selección en estado local, no en la query.** Pestaña, pedido y entrada viven en `useState`. Con `?order=` cada clic re-renderizaría la página de servidor (que consulta la base) y hoy no hay enlace entrante que la use. Al cambiar de pedido, la entrada vuelve a la 1 (`TicketDetail` con `key={orderCode}`).
+- **D6 — "Ver mis entradas" → `/my-tickets`, sin preselección.** Con el checkout mock, el pedido recién creado no existe en la base. Cuando la compra sea real, se evaluará `?order=` (spec de compra real). No se muestra nota de "modo demo" (Q2).
 - **D7 — Patrones accesibles.**
-  - **Próximas | Pasadas** usa `Tabs` de shadcn (Base UI): `role="tablist"`/`tab`/`tabpanel`, `aria-selected`, flechas entre pestañas y activación con Enter/Espacio (`activateOnFocus` en su default `false`). Se aparta del lienzo, que usa botones `aria-pressed`: el control cambia el panel visible, y eso es una pestaña, no un toggle.
-  - **Lista de pedidos:** `<button>` con `aria-current="true"` solo en el seleccionado (sin `aria-current="false"` en el resto) y `aria-controls` hacia el panel de la entrada. Se elige `aria-current` (como el lienzo) y no `aria-pressed`: es "el elemento actual de un conjunto" (maestro-detalle de selección única), no un interruptor de encendido y apagado.
-  - **Anterior/siguiente** usan `Button` con `focusableWhenDisabled`. En el extremo quedan `aria-disabled` sin perder el foco.
+  - **Próximas | Pasadas** usa `Tabs` de shadcn (Base UI): `role="tablist"`/`tab`/`tabpanel`, `aria-selected`, flechas entre pestañas y activación con Enter/Espacio (`activateOnFocus` en su default `false`). Se aparta del lienzo (botones `aria-pressed`): el control cambia el panel visible, es una pestaña.
+  - **Lista de pedidos:** `<button>` con `aria-current="true"` solo en el seleccionado y `aria-controls` hacia el panel de la entrada (maestro-detalle de selección única).
+  - **Anterior/siguiente** usan `Button` con `focusableWhenDisabled`: en el extremo quedan `aria-disabled` sin perder el foco.
   - "Entrada N de M" es `aria-live="polite"`.
-- **D8 — `TicketStatus` = `ticket_status` (§6.3): `valid | used | void`, con textos "Válida" / "Usada" / "Anulada".** Se define el enum completo para que el contrato del service no cambie con la base. Solo "Válida" usa color (`text-success-foreground`, ver design-system §2.3.5); las otras usan `text-muted-foreground`.
-- **D9 — "Descargar PDF" descarga el pedido completo** (una página por entrada, `ticketera-{code}.pdf`), igual que en la confirmación. La acción secundaria del diseño es **"Agregar al calendario"**, con el .ics de la 012. Ninguna es un botón muerto.
-  - Para no duplicar los manejadores, se extrae `useTicketDownloads` de `ConfirmationActions` a `src/modules/checkout/hooks/`.
-  - `tickets` lo importa desde `checkout`, que es dueño de los documentos de la entrada (PDF/ICS). Es la misma dirección de dependencia que ya hay entre `checkout`, `events` y `seating`.
-- **D10 — Código de entrada `TK-XXXXX-NN`** (lienzo: `code + '-0' + n`; se generaliza con `padStart(2, "0")` para ≥ 10). No se agrega a `ConfirmationTicket` porque la confirmación no lo muestra. Vive en `UserTicket.code`.
-- **D11 — "Próximas" vacía** (no está en el diseño; criterio propio): "No tienes entradas para próximos eventos" / "Cuando compres entradas, las verás aquí." + "Explorar eventos". Con el mock actual no se ve, pero la vista lo soporta y el test lo cubre.
-- **D12 — Un solo `dl` en DOM, en el orden del desktop: Zona, [Asiento], Titular, Código, Estado.** El móvil del lienzo cambia el orden (Zona, Estado, Titular, Código). No se reordena con CSS, para que el orden visual y el de lectura coincidan. "Asiento" (criterio propio) aparece solo en entradas de teatro, como en la tarjeta de la confirmación.
-- **D13 — Fecha larga en ambos tamaños.** En el detalle, `formatDateLong` también en móvil (el lienzo móvil usa la corta). En móvil la lista va en columna, así que entra.
+- **D8 — `TicketStatus` = `ticket_status` (§6.3): `valid | used | void`, con textos "Válida" / "Usada" / "Anulada".** Ahora son reales: lo que diga `tickets.status`. Solo "Válida" usa color (`text-success-foreground`, design-system §2.3.5); las otras usan `text-muted-foreground`. Se listan también entradas `used` y `void` (una entrada anulada por reembolso sigue siendo visible como "Anulada").
+- **D9 — "Descargar PDF" descarga el pedido completo** (una página por entrada **del usuario en ese pedido**, `ticketera-{code}.pdf`), igual que en la confirmación. La acción secundaria es **"Agregar al calendario"** (.ics de la 012). Se extrae `useTicketDownloads` de `ConfirmationActions` a `src/modules/checkout/hooks/`; `tickets` lo importa de `checkout` (dueño de PDF/ICS).
+  - Los generadores de PDF/ICS solo leen `id`, `title`, `startsAt`, `doorsOpenAt` y `venue`: su parámetro pasa de `EventItem` a `TicketDocumentEvent` (un `Pick`), sin cambio de comportamiento. `EventItem` sigue siendo compatible.
+- **D10 — Código de entrada `TK-XXXXX-NN`:** `formatTicketCode(orderCode, position)` con `padStart(2, "0")`. Usa `orders.code`. Vive en `UserTicket.code`.
+- **D11 — Estados vacíos.** "Pasadas": "Aún no tienes eventos pasados" / "Cuando vayas a tu primer evento, lo verás aquí." "Próximas" (criterio propio): "No tienes entradas para próximos eventos" / "Cuando compres entradas, las verás aquí." + "Explorar eventos". **Con la base sin pedidos (D0) es lo que se ve.**
+- **D12 — Un solo `dl` en DOM, en el orden del desktop: Zona, [Asiento], Titular, Código, Estado.** No se reordena con CSS. "Asiento" aparece solo si la entrada tiene `seat_id` (etiqueta vía `formatSeatPosition`).
+- **D13 — Fecha larga en ambos tamaños** (`formatDateLong`).
+- **D14 — Evento del pedido = `UserOrderEvent`**, no `EventItem` (la base no tiene `imageAlt`, categoría de UI ni `availability`):
+  - `imageUrl` = `events.cover_key` (hoy una URL de Unsplash puesta por el seed 022; TEMPORAL hasta GCS, 022 Q6b). Si es `null`, se muestra un bloque `bg-muted` con icono `Ticket` en lugar de la imagen.
+  - `imageAlt` = título del evento.
+  - `doorsOpenAt` nulo → se usa `startsAt` (los generadores de PDF/ICS lo exigen).
+  - `venue.address` = `venues.address_line ?? ""`.
 
 ## Diseño (transcrito de `MyTickets` / `MyTicketsMobile`)
 
@@ -87,7 +96,6 @@ Colores del lienzo → tokens: `#F4F4F5` → `bg-secondary`; `#FFFFFF` → `bg-c
   - Cada pestaña: `h-10 px-[18px] rounded-[10px] text-sm font-semibold`. Activa: `bg-foreground text-background`. Inactiva: transparente con `text-foreground`.
 - Móvil: `pt-[22px] pb-4`, columna `gap-4`. `<h1>` 28px / 1.15. La cápsula es grid de 2 columnas a todo el ancho y cada pestaña mide `h-[42px]`.
 - Textos de las pestañas: "Próximas ({n})" y "Pasadas ({n})".
-- Nota de modo demo (D6, criterio propio): bajo el `<h1>`, `text-[13px] text-muted-foreground`.
 
 **Panel con pedidos (desktop, `lg+`):** grid `grid-cols-[25rem_minmax(0,1fr)] gap-8 items-start`, `pb-20`.
 
@@ -133,45 +141,49 @@ Colores del lienzo → tokens: `#F4F4F5` → `bg-secondary`; `#FFFFFF` → `bg-c
 
 Todos los interactivos propios llevan `focus-ring`. Claro y oscuro solo con tokens, excepto el `bg-white` de la caja del QR.
 
+
 ## Inventario (existente vs. nuevo)
 
 | Pieza | Acción | Ubicación | Notas |
 |---|---|---|---|
-| `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` | agregar de shadcn | `src/components/ui/tabs.tsx` | `npx shadcn@latest add tabs` (base-nova sobre `@base-ui/react/tabs`; verificado con `npx shadcn@latest view tabs`). Se estiliza por `className` al usarlo: no se edita el archivo generado. |
+| `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` | agregar de shadcn | `src/components/ui/tabs.tsx` | `npx shadcn@latest add tabs` (base-nova sobre `@base-ui/react/tabs`). Se estiliza por `className`: no se edita el archivo generado. |
 | `Button` (`focusableWhenDisabled`, `buttonVariants`) | reutilizar | `src/components/ui/button.tsx` | Anterior/siguiente y acciones. |
 | `Empty*` | reutilizar | `src/components/ui/empty.tsx` | Estados vacíos. |
 | `DecorativeQr` | reutilizar | `src/components/shared/decorative-qr.tsx` | Con `qrSeed` de la entrada. |
-| `ConfirmationTicket`, `buildConfirmationTickets` | **extender** | `src/modules/checkout/utils/order-confirmation.ts` | Nueva `createConfirmationTickets(orderCode, units)` y tipo exportado `ConfirmationTicketUnit` (hoy `TicketUnit` privado). `buildConfirmationTickets` delega en ella: su salida no cambia (D2). |
-| `useTicketDownloads` | **crear (extraído)** | `src/modules/checkout/hooks/use-ticket-downloads.ts` | Se mueven, sin cambios de comportamiento, los manejadores de calendario y PDF de `ConfirmationActions` (mensajes, guard de doble clic con ref, estado de carga). Lo usan `ConfirmationActions` y `TicketDetail` (DRY, D9). |
-| `ConfirmationActions` | **extender** | `src/modules/checkout/components/confirmation-actions.tsx` | Usa `useTicketDownloads`. "Ver mis entradas" pasa de `<Button onClick>` con mensaje mock a `<Link href={MY_TICKETS_PATH}>` con el mismo aspecto (`buttonVariants` + las clases actuales). Se elimina `MY_TICKETS_MESSAGE`. |
-| `buildTicketPdfPages`, `getTicketPdfFileName`, `generateTicketPdf`, `buildEventCalendar`, `getCalendarFileName`, `CALENDAR_MIME_TYPE`, `downloadBlob` | reutilizar | `src/modules/checkout/utils/*`, `src/lib/download.ts` | Vía el hook. `UserTicket` extiende `ConfirmationTicket`, así que se pasa sin adaptar. |
-| `formatSeatPosition` | reutilizar | `src/modules/seating/utils/seat-selection.ts` | Etiqueta de asiento del mock de teatro. |
-| `isOrderCode` | reutilizar | `src/modules/checkout/utils/checkout-order.ts` | Valida el código del registro mock. |
-| `formatDateBadge`, `formatDateShort`, `formatDateLong`, `formatTime` | reutilizar | `src/lib/format.ts` | No hay moneda en pantalla: los precios solo aparecen en el PDF (USD, vía `formatPrice` de la 012). |
-| `eventsService.getAll`, `getTicketTypes`, `getReferenceDate` | reutilizar | `src/modules/events/services/events.service.ts` | El service de tickets depende de `eventsService`, no de los mocks de events (DIP). |
+| `getDb()`, esquema `tickets`/`orders`/`order_items`/`events`/`venues`/`ticket_types`/`seats` | reutilizar | `src/db/client.ts`, `src/db/schema/*` (019) | El service consulta con Drizzle. No hay módulo de acceso a datos previo para tickets. |
+| `requireUser` / `AccessContext` | reutilizar | `src/lib/auth/guards.ts` (020) | `userId` (uuid), `displayName`, `email`. Reemplaza a `currentUser()` de Clerk (D4). |
+| `usersService` | no aplica | `src/modules/users/services/users.service.ts` | Resuelve identidad para los guards; Mis entradas no lo llama directo. |
+| `ConfirmationTicket`, `buildConfirmationTickets` | **extender** | `src/modules/checkout/utils/order-confirmation.ts` | Nueva `createConfirmationTickets(orderCode, units)`, tipo exportado `ConfirmationTicketUnit` (hoy `TicketUnit` privado) y `TicketDocumentEvent`. `buildConfirmationTickets` delega en ella: su salida no cambia (D2). |
+| `buildTicketPdfPages`, `buildEventCalendar` | **extender (solo tipo)** | `src/modules/checkout/utils/ticket-pdf.ts`, `event-calendar.ts` | El parámetro `event` pasa de `EventItem` a `TicketDocumentEvent` (D9). Sin cambio de comportamiento; sus tests no cambian. |
+| `getTicketPdfFileName`, `generateTicketPdf`, `getCalendarFileName`, `CALENDAR_MIME_TYPE`, `downloadBlob` | reutilizar | `src/modules/checkout/utils/*`, `src/lib/download.ts` | Vía el hook. |
+| `useTicketDownloads` | **crear (extraído)** | `src/modules/checkout/hooks/use-ticket-downloads.ts` | Se mueven, sin cambios de comportamiento, los manejadores de calendario y PDF de `ConfirmationActions`. Lo usan `ConfirmationActions` y `TicketDetail` (DRY). |
+| `ConfirmationActions` | **extender** | `src/modules/checkout/components/confirmation-actions.tsx` | Usa el hook. "Ver mis entradas" pasa de `<Button onClick>` con mensaje mock a `<Link href={MY_TICKETS_PATH}>` con el mismo aspecto. Se elimina `MY_TICKETS_MESSAGE`. |
+| `formatSeatPosition` | **extender (solo tipo)** | `src/modules/seating/utils/seat-selection.ts` | `number: number` → `number: number \| string` (`seats.seat_number` es `text`). Misma salida. |
+| `formatDateBadge`, `formatDateShort`, `formatDateLong`, `formatTime` | reutilizar | `src/lib/format.ts` | No hay moneda en pantalla (precios solo en el PDF). |
 | `getEventsSearchHref` | reutilizar | `src/modules/events/utils/event-routes.ts` | "Explorar eventos". |
 | `MY_TICKETS_PATH` | reutilizar | `src/lib/auth/auth-routes.ts` (013) | "Ver mis entradas" y `returnTo`. |
-| `requireUser` | reutilizar | `src/lib/auth/guards.ts` (015) | En la página (D4). |
-| `currentUser` | reutilizar (Clerk) | `@clerk/nextjs/server` | En la página (D4). |
-| `EventCard` | no aplica | `src/modules/events/components/event-card.tsx` | Es un link-tarjeta a `/events/[slug]` con precio. Aquí cada pedido es un botón de selección con otra información: no es sustituible (L de SOLID). |
-| `ConfirmationTicketCard` | no aplica | `src/modules/checkout/components/confirmation-ticket-card.tsx` | Muestra todas las entradas en horizontal con Precio. Mis entradas muestra una sola, en vertical, con navegación, Titular, Código, Estado y acciones. Comparten solo `DecorativeQr` y la idea de muescas: extraer un "ticket shell" común sería abstracción prematura. |
-| `TicketStatus`, `UserOrderRecord`, `UserTicket`, `UserOrder`, `OrdersByTime` | crear | `src/modules/tickets/types/ticket.types.ts` | No existen. |
-| `USER_ORDERS_MOCK` | crear | `src/modules/tickets/data/user-orders.mock.ts` | 3 pedidos (ver C4). |
+| `eventsService`, `EventItem`, mocks de eventos | no aplica | `src/modules/events/**` | Siguen en mock; Mis entradas **no** los usa (las filas traen el evento de la base, D14). Se deja de usar `getReferenceDate()` (D3). |
+| `isOrderCode`, `USER_ORDERS_MOCK` | no aplica / **eliminado** | — | La versión anterior de esta spec creaba un mock de pedidos: ya no se crea. |
+| `EventCard` | no aplica | `src/modules/events/components/event-card.tsx` | Link-tarjeta a `/events/[slug]` con precio; aquí cada pedido es un botón de selección (L de SOLID). |
+| `ConfirmationTicketCard` | no aplica | `src/modules/checkout/components/confirmation-ticket-card.tsx` | Muestra todas las entradas en horizontal con Precio; aquí una sola, vertical, con navegación y acciones. Extraer un "ticket shell" sería abstracción prematura. |
+| `TicketStatus`, `UserTicketRow`, `UserOrderEvent`, `UserTicket`, `UserOrder`, `OrdersByTime` | crear | `src/modules/tickets/types/ticket.types.ts` | No existen. |
 | utils de Mis entradas | crear | `src/modules/tickets/utils/user-orders.ts` | Puros y testeados (C5). |
-| `ticketsService` | crear | `src/modules/tickets/services/tickets.service.ts` | Mismo patrón que `eventsService` (objeto con métodos async). |
-| `MyTicketsView` | crear | `src/modules/tickets/components/my-tickets-view.tsx` | `"use client"`: pestañas, selección y estados vacíos. |
-| `OrderList` | crear | `src/modules/tickets/components/order-list.tsx` | Lista de pedidos (botones). |
-| `TicketDetail` | crear | `src/modules/tickets/components/ticket-detail.tsx` | `"use client"`: entrada seleccionada, navegación y acciones. |
+| `ticketsService` | crear | `src/modules/tickets/services/tickets.service.ts` | Objeto con métodos async (patrón de `eventsService`/`usersService`); consulta Drizzle. |
+| `MyTicketsView`, `OrderList`, `TicketDetail` | crear | `src/modules/tickets/components/*.tsx` | Ver C7. |
 
 ## Contratos
 
-### C1 — Numeración compartida (`src/modules/checkout/utils/order-confirmation.ts`, extiende)
+### C1 — Numeración compartida y tipo de evento (`src/modules/checkout/utils/order-confirmation.ts`, extiende)
 
 ```ts
 export type ConfirmationTicketUnit = Pick<ConfirmationTicket, "ticketTypeName" | "seatLabel" | "unitPrice">
 
+/** Lo que PDF/ICS leen del evento. EventItem es asignable a este tipo. */
+export type TicketDocumentEvent = Pick<EventItem, "id" | "title" | "startsAt" | "doorsOpenAt" | "venue">
+
 /** Numera las unidades en el orden recibido: position 1..n, total = units.length,
- *  key = `${orderCode}-${position}`, qrSeed = Number(dígitos de orderCode) × 100 + position. [] → []. Pura. */
+ *  key = `${orderCode}-${position}`, qrSeed = Number(dígitos de orderCode) × 100 + position
+ *  (si el código no tiene dígitos, la parte numérica vale 0). [] → []. Pura. */
 export function createConfirmationTickets(
   orderCode: string,
   units: readonly ConfirmationTicketUnit[]
@@ -185,7 +197,7 @@ export function createConfirmationTickets(
 
 ```ts
 export type TicketDownloadsInput = {
-  event: EventItem
+  event: TicketDocumentEvent
   orderCode: string
   /** No vacío. */
   tickets: readonly ConfirmationTicket[]
@@ -206,8 +218,7 @@ export function useTicketDownloads(input: TicketDownloadsInput): TicketDownloads
 ```
 
 - `jspdf` se sigue cargando solo al generar: el hook no lo importa al renderizar.
-
-`ConfirmationActions`: mismas props (`event`, `orderCode`, `tickets`) y mismo aspecto. Usa el hook. "Ver mis entradas" es un `<Link href={MY_TICKETS_PATH}>` (con su icono `ArrowRight`) y no escribe en la región de estado.
+- `ConfirmationActions`: mismas props y mismo aspecto. Usa el hook. "Ver mis entradas" es un `<Link href={MY_TICKETS_PATH}>` (con su icono `ArrowRight`) y no escribe en la región de estado.
 
 ### C3 — Tipos (`src/modules/tickets/types/ticket.types.ts`)
 
@@ -218,13 +229,32 @@ import type { EventItem } from "@/modules/events/types/event.types"
 /** ticket_status (System Design §6.3). */
 export type TicketStatus = "valid" | "used" | "void"
 
-/** Registro mock de un pedido pagado (futuro seed de orders + order_items + tickets). */
-export type UserOrderRecord = {
-  /** ORDER_CODE_PATTERN (TK-XXXXX). */
+/** Fila plana del query de Mis entradas. NO incluye qr_token. Una fila por ticket. */
+export type UserTicketRow = {
+  ticketId: string
+  ticketStatus: TicketStatus
+  ticketCreatedAt: Date
+  orderId: string
   orderCode: string
+  unitPriceCents: number
+  ticketTypeName: string
+  seatRowLabel: string | null
+  seatNumber: string | null
   eventId: string
-  /** Una por entrada, en orden de emisión. seat solo en eventos de teatro. */
-  units: readonly { ticketTypeId: string; seat: { rowLabel: string; number: number } | null }[]
+  eventTitle: string
+  eventCoverKey: string | null
+  eventStartsAt: Date
+  eventDoorsOpenAt: Date | null
+  venueId: string
+  venueName: string
+  venueCity: string
+  venueAddressLine: string | null
+}
+
+/** Evento tal como lo muestra Mis entradas (D14). Serializable. */
+export type UserOrderEvent = Pick<EventItem, "id" | "title" | "startsAt" | "doorsOpenAt" | "venue" | "imageAlt"> & {
+  /** null → bloque muted con icono. */
+  imageUrl: string | null
 }
 
 export type UserTicket = ConfirmationTicket & {
@@ -236,7 +266,7 @@ export type UserTicket = ConfirmationTicket & {
 /** Entradas del usuario agrupadas por pedido. Serializable (viaja de server a client). */
 export type UserOrder = {
   orderCode: string
-  event: EventItem
+  event: UserOrderEvent
   /** No vacío; position 1..n en orden. */
   tickets: UserTicket[]
 }
@@ -244,15 +274,19 @@ export type UserOrder = {
 export type OrdersByTime = { upcoming: UserOrder[]; past: UserOrder[] }
 ```
 
-### C4 — Mock (`src/modules/tickets/data/user-orders.mock.ts`)
+### C4 — Service (`src/modules/tickets/services/tickets.service.ts`)
 
-`export const USER_ORDERS_MOCK: readonly UserOrderRecord[]`, en este orden. Solo lo importa `tickets.service.ts`.
-
-| orderCode | eventId | units | Resultado esperado |
-|---|---|---|---|
-| `TK-24817` | `evt-002` (Clásico del Fútbol, 4 oct, zona) | `evt-002-sur`, `evt-002-sur`, `evt-002-oriente` (sin asiento) | 3 entradas · Sur, Oriente. Idénticas a las de la confirmación `?order=TK-24817&tickets=evt-002-sur:2,evt-002-oriente:1` (D2), más `code`/`status`. |
-| `TK-24790` | `evt-004` (La Casa de Bernarda Alba, 22 oct, teatro) | `evt-004-platea` con `{ rowLabel: "F", number: 8 }` | 1 entrada · Platea, `seatLabel` "Fila F, asiento 8". |
-| `TK-24852` | `evt-007` (Pop en Vivo: Gira 2026, 8 nov, zona) | `evt-007-campo` × 2 | 2 entradas · Campo. |
+```ts
+export const ticketsService = {
+  /** Lee de la base (Drizzle, getDb()): tickets con holder_user_id = userId, unidos a orders (code),
+   *  order_items (unit_price_cents), ticket_types (name), events (title, cover_key, starts_at, doors_open_at),
+   *  venues (id, name, city, address_line) y seats (row_label, seat_number; LEFT JOIN: tickets sin asiento).
+   *  `userId` es users.id (uuid) de requireUser(); es el ÚNICO filtro de pertenencia. Sin entradas → [].
+   *  Ordena por event.starts_at, orders.created_at, tickets.created_at, tickets.id y delega en buildUserOrders.
+   *  No selecciona qr_token. No filtra por tickets.status (D8). */
+  async getUserOrders(userId: string): Promise<UserOrder[]>,
+}
+```
 
 ### C5 — Utils (`src/modules/tickets/utils/user-orders.ts`, puros)
 
@@ -262,16 +296,13 @@ export const TICKET_STATUS_LABELS: Readonly<Record<TicketStatus, string>> // { v
 /** `${orderCode}-${String(position).padStart(2, "0")}`. ("TK-24817", 1) → "TK-24817-01"; 12 → "TK-24817-12". */
 export function formatTicketCode(orderCode: string, position: number): string
 
-/** null si: !isOrderCode(record.orderCode), units vacío, record.eventId !== event.id, o algún ticketTypeId
- *  no está en ticketTypes. Si no: tickets = createConfirmationTickets(orderCode, units mapeadas a
- *  { ticketTypeName: type.name, unitPrice: type.price, seatLabel: seat ? formatSeatPosition(seat) : null })
- *  + { code: formatTicketCode(orderCode, position), status: "valid" } (TEMPORAL: estado real con la base).
- *  Los tipos agotados también valen (una entrada comprada puede ser de una zona hoy agotada). */
-export function buildUserOrder(
-  record: UserOrderRecord,
-  event: EventItem,
-  ticketTypes: readonly TicketType[]
-): UserOrder | null
+/** Agrupa por orderId (orden de primera aparición). Dentro de cada pedido ordena por ticketCreatedAt y ticketId.
+ *  event: UserOrderEvent según D14 (ISO con toISOString; doorsOpenAt ?? startsAt; address = venueAddressLine ?? "";
+ *  imageUrl = eventCoverKey; imageAlt = eventTitle). Cada unidad: { ticketTypeName, unitPrice: unitPriceCents / 100,
+ *  seatLabel: seatRowLabel y seatNumber presentes ? formatSeatPosition({ rowLabel, number: seatNumber }) : null }.
+ *  tickets = createConfirmationTickets(orderCode, unidades) + { code: formatTicketCode(orderCode, position), status: ticketStatus }.
+ *  [] → []. No muta la entrada. */
+export function buildUserOrders(rows: readonly UserTicketRow[]): UserOrder[]
 
 /** upcoming: event.startsAt >= now (inclusivo), por startsAt ascendente.
  *  past: event.startsAt < now, por startsAt descendente. Arrays nuevos; no muta la entrada. */
@@ -283,9 +314,9 @@ export function getTicketCountLabel(count: number): string
 /** Nombres de zona únicos en orden de aparición, unidos por ", ". [Sur, Sur, Oriente] → "Sur, Oriente". */
 export function getOrderZonesLabel(tickets: readonly Pick<ConfirmationTicket, "ticketTypeName">[]): string
 
-/** fullName sin espacios extremos si no queda vacío → si no, email si no está vacío → si no, "Sin nombre".
+/** displayName sin espacios extremos si no queda vacío → si no, email si no está vacío → si no, "Sin nombre".
  *  null → "Sin nombre". */
-export function getHolderName(user: { fullName?: string | null; email?: string | null } | null): string
+export function getHolderName(user: { displayName?: string | null; email?: string | null } | null): string
 
 /** El pedido con ese código; si no está (o orderCode es null), el primero; [] → null. */
 export function resolveSelectedOrder(orders: readonly UserOrder[], orderCode: string | null): UserOrder | null
@@ -294,27 +325,13 @@ export function resolveSelectedOrder(orders: readonly UserOrder[], orderCode: st
 export function stepTicketIndex(index: number, delta: -1 | 1, total: number): number
 ```
 
-### C6 — Service (`src/modules/tickets/services/tickets.service.ts`)
-
-```ts
-export const ticketsService = {
-  /** TEMPORAL (mock): no filtra por userId; devuelve los pedidos de USER_ORDERS_MOCK a cualquier usuario.
-   *  Con la base: pedidos `paid` con entradas cuyo holder_user_id = userId (§6.4).
-   *  Por registro: evento = (await eventsService.getAll()).find(id), tipos = await eventsService.getTicketTypes(eventId),
-   *  buildUserOrder; descarta registros sin evento o que devuelvan null. Orden del mock. Objetos nuevos en cada llamada. */
-  async getUserOrders(userId: string): Promise<UserOrder[]>,
-}
-```
-
-- El parámetro `userId` es parte del contrato. La implementación no debe dejar warnings de lint por no usarlo.
-
-### C7 — Componentes
+### C6 — Componentes
 
 ```ts
 // src/modules/tickets/components/my-tickets-view.tsx — "use client"
 export type MyTicketsViewProps = {
   orders: readonly UserOrder[]
-  /** ISO; "ahora" para separar Próximas/Pasadas (D3). */
+  /** ISO; "ahora" del servidor para separar Próximas/Pasadas (D3). */
   referenceDate: string
   /** getHolderName(...) ya resuelto en el servidor (D4). */
   holderName: string
@@ -347,65 +364,61 @@ Comportamiento:
 - **`MyTicketsView`**
   - `{ upcoming, past } = splitOrdersByEventDate(orders, new Date(referenceDate))`.
   - Estado: pestaña (`"upcoming" | "past"`, inicial `"upcoming"`) y `selectedOrderCode: string | null` (inicial `null`).
-  - Renderiza `<h1>`, la nota demo y `Tabs` con dos `TabsTrigger` ("Próximas (n)", "Pasadas (n)") y dos `TabsContent`.
-  - En cada panel, `selected = resolveSelectedOrder(lista, selectedOrderCode)`:
-    - si es `null`, muestra el estado vacío (Pasadas: textos transcritos; Próximas: D11);
-    - si no, muestra `OrderList` + `<TicketDetail key={selected.orderCode} …>`.
+  - Renderiza `<h1>` y `Tabs` con dos `TabsTrigger` ("Próximas (n)", "Pasadas (n)") y dos `TabsContent`.
+  - En cada panel, `selected = resolveSelectedOrder(lista, selectedOrderCode)`: si es `null`, estado vacío (D11); si no, `OrderList` + `<TicketDetail key={selected.orderCode} …>`.
   - Ids únicos por panel con `useId`.
 - **`OrderList`**
-  - `<ul aria-label="Pedidos">` con un `<button type="button">` por pedido.
-  - El seleccionado lleva `aria-current="true"`; los demás no tienen el atributo. Todos llevan `aria-controls={controlsId}`.
-  - Clic → `onSelect(orderCode)`.
-  - Contenido según "Diseño"; usa `getTicketCountLabel` y `getOrderZonesLabel`.
+  - `<ul aria-label="Pedidos">` con un `<button type="button">` por pedido. El seleccionado lleva `aria-current="true"`; los demás no tienen el atributo. Todos llevan `aria-controls={controlsId}`. Clic → `onSelect(orderCode)`.
+  - Contenido según "Diseño"; usa `getTicketCountLabel` y `getOrderZonesLabel`. Miniatura: `imageUrl` o bloque muted (D14).
 - **`TicketDetail`**
-  - Estado local `ticketIndex` (inicial 0). Anterior/siguiente usan `stepTicketIndex`.
-  - "Entrada {position} de {total}".
-  - Anterior queda `aria-disabled` en la primera y siguiente en la última (`focusableWhenDisabled`): el foco no se pierde.
-  - `dl`: Zona, Asiento (solo si `seatLabel`), Titular, Código (`ticket.code`) y Estado (`TICKET_STATUS_LABELS[ticket.status]`, color según D8).
-  - Acciones con `useTicketDownloads({ event: order.event, orderCode: order.orderCode, tickets: order.tickets })`. Mientras genera, el botón PDF muestra `Loader2` (`motion-reduce:animate-none`) y `aria-busy`, igual que la 012.
+  - Estado local `ticketIndex` (inicial 0). Anterior/siguiente usan `stepTicketIndex`. "Entrada {position} de {total}". Anterior `aria-disabled` en la primera y siguiente en la última (`focusableWhenDisabled`).
+  - `dl`: Zona, Asiento (solo si `seatLabel`), Titular (`holderName`), Código (`ticket.code`) y Estado (`TICKET_STATUS_LABELS[ticket.status]`, color según D8).
+  - Acciones con `useTicketDownloads({ event: order.event, orderCode: order.orderCode, tickets: order.tickets })`. Mientras genera, el botón PDF muestra `Loader2` (`motion-reduce:animate-none`) y `aria-busy`.
   - `<article id={id} aria-labelledby={<id del h2>}>`.
 
-### C8 — Página (`src/app/(site)/my-tickets/page.tsx`, reemplaza el placeholder C12 de la 013)
+### C7 — Página (`src/app/(site)/my-tickets/page.tsx`, reemplaza el placeholder de la 013)
 
 ```tsx
 export const metadata: Metadata = { title: "Mis entradas — Ticketera", robots: { index: false } }
 
 export default async function MyTicketsPage() {
-  const { userId } = await requireUser({ returnTo: MY_TICKETS_PATH })
-  const [user, orders] = await Promise.all([currentUser(), ticketsService.getUserOrders(userId)])
-  // <MyTicketsView orders={orders} referenceDate={eventsService.getReferenceDate()}
-  //   holderName={getHolderName(user && { fullName: user.fullName, email: user.primaryEmailAddress?.emailAddress })} />
+  const { userId, displayName, email } = await requireUser({ returnTo: MY_TICKETS_PATH })
+  const orders = await ticketsService.getUserOrders(userId)
+  // <MyTicketsView orders={orders} referenceDate={new Date().toISOString()}
+  //   holderName={getHolderName({ displayName, email })} />
 }
 ```
 
-- Solo composición, sin lógica propia. El redirect de `requireUser` no se captura.
+- Solo composición. Sin `searchParams` ni parámetros de ruta. El redirect de `requireUser` no se captura.
 
 ## Tareas
 
 ### Preparación (serie, en este orden)
 
 - **P1** Agregar Tabs de shadcn: `npx shadcn@latest add tabs`. Archivos: `src/components/ui/tabs.tsx` (generado, no se edita a mano).
-- **P2** Checkout: numeración compartida (C1), hook de descargas (C2) y `ConfirmationActions` (link y hook), con tests. Archivos:
+- **P2** Checkout y seating: numeración compartida y tipo de evento (C1), tipos de PDF/ICS, hook de descargas (C2), `ConfirmationActions` y ampliación de tipo de `formatSeatPosition`, con tests. Archivos:
   - `src/modules/checkout/utils/order-confirmation.ts`
   - `src/modules/checkout/utils/order-confirmation.test.ts`
+  - `src/modules/checkout/utils/ticket-pdf.ts`
+  - `src/modules/checkout/utils/event-calendar.ts`
   - `src/modules/checkout/hooks/use-ticket-downloads.ts`
   - `src/modules/checkout/components/confirmation-actions.tsx`
   - `src/modules/checkout/components/confirmation-actions.test.tsx`
-- **P3** Contratos de `tickets`: tipos, mock, utils y service, con tests (C3–C6). Archivos:
+  - `src/modules/seating/utils/seat-selection.ts`
+- **P3** Contratos de `tickets`: tipos, utils y service, con tests (C3–C5). Archivos:
   - `src/modules/tickets/types/ticket.types.ts`
-  - `src/modules/tickets/data/user-orders.mock.ts`
   - `src/modules/tickets/utils/user-orders.ts`
   - `src/modules/tickets/utils/user-orders.test.ts`
   - `src/modules/tickets/services/tickets.service.ts`
   - `src/modules/tickets/services/tickets.service.test.ts`
-- Verificación acotada al cerrar P2 y P3: `npx vitest run src/modules/checkout src/modules/tickets` y `npm run lint`.
+- Verificación acotada al cerrar P2 y P3: `npx vitest run src/modules/checkout src/modules/seating src/modules/tickets` y `npm run lint`.
 
 ### Paralelo (archivos disjuntos; nadie corre `npm install` ni `npm run build`)
 
-- **T1** Vista y lista de pedidos (C7: `MyTicketsView`, `OrderList`, estados vacíos). Importa `TicketDetail` por su contrato C7: si T2 no terminó, el archivo puede no compilar todavía. Se verifica en I1. Archivos:
+- **T1** Vista y lista de pedidos (C6: `MyTicketsView`, `OrderList`, estados vacíos). Importa `TicketDetail` por su contrato: si T2 no terminó, puede no compilar todavía; se verifica en I1. Archivos:
   - `src/modules/tickets/components/my-tickets-view.tsx`
   - `src/modules/tickets/components/order-list.tsx`
-- **T2** Entrada seleccionada (C7: `TicketDetail`, navegación, `dl` y acciones). Archivos:
+- **T2** Entrada seleccionada (C6: `TicketDetail`, navegación, `dl` y acciones). Archivos:
   - `src/modules/tickets/components/ticket-detail.tsx`
 
 ### Integración (serie)
@@ -415,112 +428,93 @@ export default async function MyTicketsPage() {
   - `src/modules/tickets/components/my-tickets-view.test.tsx`
   - `docs/design/design-system.md`: solo §2.3.5, donde "el estado "Válida" de Mis entradas (013)" pasa a "(016)".
 
-**Tamaño:** 18 archivos: 13 de código (1 generado por la CLI), 5 de tests y 1 línea de doc. Supera la guía de ~14, pero:
+**Tamaño:** 19 archivos (14 de código, 1 generado por la CLI; 5 de tests; 1 línea de doc), 1 menos que antes por eliminar el mock, pero con el service Drizzle. Supera la guía de ~8. Si el aprobador prefiere partir: **016a** = P1–P3 (lectura y contratos, sin UI) y **016b** = T1, T2, I1. La partición no cambia contratos.
 
-- casi la mitad son tests obligatorios o el componente generado;
-- separar las descargas o el mock en otra fase dejaría Mis entradas con botones muertos o sin datos.
-
-**Archivos existentes que se modifican:**
-
-- `src/modules/checkout/utils/order-confirmation.ts` (+ test)
-- `src/modules/checkout/components/confirmation-actions.tsx` (+ test)
-- `src/app/(site)/my-tickets/page.tsx` (creado por la 013)
-- `docs/design/design-system.md` (1 línea)
+**Archivos existentes que se modifican:** `order-confirmation.ts` (+ test), `ticket-pdf.ts`, `event-calendar.ts`, `confirmation-actions.tsx` (+ test), `seat-selection.ts`, `src/app/(site)/my-tickets/page.tsx` (013), `docs/design/design-system.md` (1 línea).
 
 ## Criterios de aceptación
 
-- [ ] AC1 Sin sesión, `/my-tickets` redirige a `/sign-in?redirect_url=%2Fmy-tickets` (proxy de la 013). Con sesión, la página llama `requireUser({ returnTo: "/my-tickets" })` antes de leer datos (verificable en el código), tiene `<title>` "Mis entradas — Ticketera" y `robots` noindex.
-- [ ] AC2 Con sesión, se ve el `<h1>` "Mis entradas", la nota "Modo demo: estas entradas son de ejemplo. Tus compras todavía no se guardan aquí." y un `tablist` con las pestañas "Próximas (3)" (seleccionada, `aria-selected="true"`) y "Pasadas (0)".
-- [ ] AC3 Las pestañas se manejan con teclado: con el foco en una pestaña, las flechas izquierda/derecha mueven el foco a la otra, y Enter o Espacio la activa y muestra su `tabpanel`.
-- [ ] AC4 En Próximas, la lista `aria-label="Pedidos"` muestra, en este orden: "Clásico del Fútbol: Final de Temporada" (sáb 4 oct · Lima · 3 entradas · Sur, Oriente), "La Casa de Bernarda Alba" (1 entrada · Platea) y "Pop en Vivo: Gira 2026" (2 entradas · Campo). Bajo `lg` no se muestran las zonas.
-- [ ] AC5 Al cargar, el primer pedido tiene `aria-current="true"` y borde `primary`; los demás no tienen `aria-current`. Al hacer clic en otro pedido, `aria-current` y el borde pasan a ese pedido, el panel muestra su evento (`<h2>`) y vuelve a "Entrada 1 de {M}".
-- [ ] AC6 El panel de la entrada muestra:
-  - imagen con badge de mes y día;
-  - `<h2>` con el título;
-  - fecha larga, hora y "{lugar}, {ciudad}";
-  - perforación con muescas y QR decorativo;
-  - "Entrada N de M";
-  - `dl` con Zona, Titular, Código y Estado "Válida" en verde (`text-success-foreground`);
-  - para TK-24790, además, "Asiento: Fila F, asiento 8".
-- [ ] AC7 Con TK-24817 seleccionado: "Entrada anterior" está `aria-disabled="true"` en la 1 de 3. "Entrada siguiente" lleva a "Entrada 2 de 3" (Código "TK-24817-02") y a "Entrada 3 de 3" (Código "TK-24817-03"), donde siguiente queda `aria-disabled="true"` y el foco sigue en ese botón. "Entrada N de M" es una región `aria-live="polite"`. En un pedido de 1 entrada, ambos botones están deshabilitados.
-- [ ] AC8 El QR de cada entrada de TK-24817 es el mismo que muestra la confirmación `/events/clasico-del-futbol-final-de-temporada/confirmation?order=TK-24817&tickets=evt-002-sur:2,evt-002-oriente:1` para esa posición (mismo `qrSeed`).
-- [ ] AC9 "Titular" muestra el `fullName` del usuario de Clerk. Si no tiene nombre, muestra su email.
-- [ ] AC10 "Descargar PDF" descarga `ticketera-{orderCode}.pdf`, con una página por entrada del pedido seleccionado, y muestra los mensajes de la 012 en una región `role="status"`. Mientras genera, el botón queda `aria-busy` y no inicia una segunda generación. "Agregar al calendario" descarga `ticketera-{orderCode}.ics` del evento del pedido. En móvil se ven "PDF" y "Calendario", pero el nombre accesible sigue siendo "Descargar PDF" / "Agregar al calendario".
-- [ ] AC11 La pestaña "Pasadas (0)" muestra el estado vacío: "Aún no tienes eventos pasados", "Cuando vayas a tu primer evento, lo verás aquí." y el link "Explorar eventos" → `/events`.
-- [ ] AC12 Con pedidos pasados (fecha de referencia posterior, en test), "Pasadas" lista esos pedidos con el mismo layout, del más reciente al más antiguo. Sin pedidos próximos, "Próximas" muestra "No tienes entradas para próximos eventos" con "Explorar eventos".
-- [ ] AC13 Desktop (`lg+`): lista de 400px a la izquierda y entrada a la derecha (grid `25rem | 1fr`). Desde `xl`, QR a la izquierda y datos a la derecha. Móvil (390px): pestañas a todo el ancho, lista horizontal con scroll y la entrada debajo (QR centrado, nav "anterior | Entrada N de M | siguiente", acciones en 2 columnas). Ningún desborde horizontal de la página a 390px.
-- [ ] AC14 Claro y oscuro: todo con tokens, salvo la caja blanca del QR. Todo interactivo tiene foco visible (`focus-ring` o el anillo de `Button`/`Tabs`), y el foco de la lista horizontal no queda recortado.
-- [ ] AC15 En la confirmación, "Ver mis entradas" es un link (`<a href="/my-tickets">`) con el mismo aspecto que antes. Ya no existe el mensaje "Mis entradas estará disponible pronto…". "Agregar al calendario" y "Descargar PDF" de la confirmación se comportan igual que en la 012 (sus tests siguen pasando).
-- [ ] AC16 El header no cambia: "Mis entradas" del header marca `aria-current="page"` en `/my-tickets` (comportamiento de la 013).
-- [ ] AC17 Estructura: `src/app/(site)/my-tickets/page.tsx` solo compone. La lógica (separar por fecha, armar pedidos, códigos, etiquetas, navegación de índice, nombre del titular) vive en `src/modules/tickets/utils/user-orders.ts`. Los componentes no importan mocks: los datos llegan por `ticketsService`, y ningún componente de `tickets` duplica los manejadores de PDF/ICS (usan `useTicketDownloads`).
-- [ ] AC18 `npm run lint`, `npm run test` y `npm run build` pasan sin errores ni warnings nuevos.
+- [ ] AC1 Sin sesión, `/my-tickets` redirige a `/sign-in?redirect_url=%2Fmy-tickets` (proxy de la 013). Con sesión, la página llama `requireUser({ returnTo: "/my-tickets" })` antes de leer datos, tiene `<title>` "Mis entradas — Ticketera" y `robots` noindex.
+- [ ] AC2 **Aislamiento por titular.** `ticketsService.getUserOrders(userId)` filtra por `tickets.holder_user_id = userId` y el `userId` que la página le pasa es el de `requireUser()`. La página no lee `searchParams` ni parámetros de ruta, y no existe endpoint o Server Action en esta spec que acepte un id de usuario. El test del service verifica que la condición `WHERE` contiene `holder_user_id` y el `userId` recibido.
+- [ ] AC3 El resultado no contiene `qr_token` (ni en `UserTicketRow` ni en `UserOrder`).
+- [ ] AC4 Con pedidos, se ve el `<h1>` "Mis entradas" y un `tablist` con "Próximas (n)" (seleccionada, `aria-selected="true"`) y "Pasadas (m)", con n y m según la fecha del evento respecto de `referenceDate`. No hay nota de "modo demo".
+- [ ] AC5 Las pestañas se manejan con teclado: flechas izquierda/derecha mueven el foco a la otra; Enter o Espacio la activa y muestra su `tabpanel`.
+- [ ] AC6 En Próximas, la lista `aria-label="Pedidos"` muestra un botón por pedido con título, "{fecha corta} · {ciudad}" y "{n entradas} · {zonas}", ordenados por fecha del evento ascendente. Bajo `lg` no se muestran las zonas.
+- [ ] AC7 Al cargar, el primer pedido tiene `aria-current="true"` y borde `primary`; los demás no tienen `aria-current`. Al hacer clic en otro pedido, `aria-current` y el borde pasan a ese pedido, el panel muestra su evento (`<h2>`) y vuelve a "Entrada 1 de {M}".
+- [ ] AC8 El panel de la entrada muestra: imagen (o bloque muted si no hay `imageUrl`) con badge de mes y día; `<h2>` con el título; fecha larga, hora y "{lugar}, {ciudad}"; perforación con muescas y QR decorativo; "Entrada N de M"; `dl` con Zona, Titular, Código (`TK-XXXXX-NN`) y Estado (verde solo "Válida"). Si la entrada tiene asiento, además "Asiento: Fila F, asiento 8".
+- [ ] AC9 En un pedido con 3 entradas: "Entrada anterior" está `aria-disabled="true"` en la 1 de 3; "Entrada siguiente" lleva a "Entrada 2 de 3" y a "Entrada 3 de 3" (Código `-02`, `-03`), donde siguiente queda `aria-disabled="true"` y el foco sigue en ese botón. "Entrada N de M" es `aria-live="polite"`. En un pedido de 1 entrada, ambos botones están deshabilitados.
+- [ ] AC10 Estados reales: una entrada `used` muestra "Usada" y una `void` "Anulada", ambas sin color de éxito.
+- [ ] AC11 "Titular" muestra `displayName` del `AccessContext`; si es vacío o nulo, el email; si tampoco hay, "Sin nombre". La página no llama a `currentUser()`.
+- [ ] AC12 "Descargar PDF" descarga `ticketera-{orderCode}.pdf`, con una página por entrada del pedido seleccionado (las del usuario), y muestra los mensajes de la 012 en una región `role="status"`. Mientras genera, el botón queda `aria-busy` y no inicia una segunda generación. "Agregar al calendario" descarga `ticketera-{orderCode}.ics`. En móvil se ven "PDF" y "Calendario", pero el nombre accesible sigue siendo "Descargar PDF" / "Agregar al calendario".
+- [ ] AC13 **Estados vacíos.** Sin pedidos pasados, "Pasadas (0)" muestra "Aún no tienes eventos pasados", "Cuando vayas a tu primer evento, lo verás aquí." y el link "Explorar eventos" → `/events`. Sin pedidos próximos, "Próximas (0)" muestra "No tienes entradas para próximos eventos" con "Explorar eventos". Con la base sin pedidos (precondición D0), la página muestra ambos estados vacíos sin errores.
+- [ ] AC14 Con pedidos pasados (fecha de referencia posterior, en test), "Pasadas" lista esos pedidos con el mismo layout, del más reciente al más antiguo.
+- [ ] AC15 Desktop (`lg+`): lista de 400px a la izquierda y entrada a la derecha (grid `25rem | 1fr`). Desde `xl`, QR a la izquierda y datos a la derecha. Móvil (390px): pestañas a todo el ancho, lista horizontal con scroll y la entrada debajo (QR centrado, nav "anterior | Entrada N de M | siguiente", acciones en 2 columnas). Ningún desborde horizontal a 390px.
+- [ ] AC16 Claro y oscuro: todo con tokens, salvo la caja blanca del QR. Todo interactivo tiene foco visible, y el foco de la lista horizontal no queda recortado.
+- [ ] AC17 En la confirmación, "Ver mis entradas" es un link (`<a href="/my-tickets">`) con el mismo aspecto que antes. Ya no existe el mensaje "Mis entradas estará disponible pronto…". "Agregar al calendario" y "Descargar PDF" de la confirmación se comportan igual que en la 012 (sus tests siguen pasando).
+- [ ] AC18 El header no cambia: "Mis entradas" marca `aria-current="page"` en `/my-tickets` (013).
+- [ ] AC19 Estructura: `src/app/(site)/my-tickets/page.tsx` solo compone. La lógica (agrupar filas, separar por fecha, códigos, etiquetas, índice, nombre del titular) vive en `src/modules/tickets/utils/user-orders.ts`; los componentes no importan `src/db` ni el service; ningún componente de `tickets` duplica los manejadores de PDF/ICS (usan `useTicketDownloads`). No quedan mocks de pedidos en el código.
+- [ ] AC20 `npm run lint`, `npm run test` y `npm run build` pasan sin errores ni warnings nuevos.
 
 ## Tests obligatorios
 
 - **`src/modules/checkout/utils/order-confirmation.test.ts`** (se agregan casos; los existentes no cambian):
-  - `createConfirmationTickets("TK-24817", 3 unidades)` → `position` 1..3, `total` 3, `key` "TK-24817-1".."-3", `qrSeed` 2481701..2481703, y los campos de cada unidad conservados;
-  - `[]` → `[]`;
-  - `buildConfirmationTickets` produce exactamente lo mismo que `createConfirmationTickets` con las unidades equivalentes (zona y teatro).
-- **`src/modules/checkout/components/confirmation-actions.test.tsx`** (cubre `useTicketDownloads` a través del componente, que es su consumidor original; los casos de calendario, PDF, doble clic y errores **no cambian**):
-  - se reemplaza el caso "Ver mis entradas mantiene su mensaje mock" por: "Ver mis entradas" es un link con `href="/my-tickets"`, y la región de estado sigue vacía al renderizar.
+  - `createConfirmationTickets("TK-24817", 3 unidades)` → `position` 1..3, `total` 3, `key` "TK-24817-1".."-3", `qrSeed` 2481701..2481703 y campos de cada unidad conservados;
+  - `[]` → `[]`; código sin dígitos → `qrSeed` = `position` y no `NaN`;
+  - `buildConfirmationTickets` produce lo mismo que `createConfirmationTickets` con las unidades equivalentes (zona y teatro).
+- **`src/modules/checkout/components/confirmation-actions.test.tsx`** (cubre `useTicketDownloads` a través de su consumidor original; los casos de calendario, PDF, doble clic y errores **no cambian**): se reemplaza "Ver mis entradas mantiene su mensaje mock" por: es un link con `href="/my-tickets"` y la región de estado sigue vacía.
 - **`src/modules/tickets/utils/user-orders.test.ts`**:
-  - `formatTicketCode`: posición 1 → "TK-24817-01"; 12 → "TK-24817-12".
-  - `buildUserOrder`:
-    - registro TK-24817 → 3 tickets iguales a `buildConfirmationTickets(parseConfirmationState({ order: "TK-24817", tickets: "evt-002-sur:2,evt-002-oriente:1" }, …))`, más `code` "TK-24817-01".."-03" y `status` "valid";
-    - registro de teatro → `seatLabel` "Fila F, asiento 8" y `unitPrice` del tipo;
-    - tipo agotado (`evt-002-occidente`) → se acepta;
-    - `null` si el código es inválido, si `units` está vacío, si `eventId` no coincide o si hay un `ticketTypeId` desconocido.
-  - `splitOrdersByEventDate`:
-    - `now` entre dos eventos → ambas listas, Próximas ascendente y Pasadas descendente;
-    - `startsAt === now` → Próximas;
-    - todos futuros → `past: []`;
-    - todos pasados → `upcoming: []`;
-    - no muta el array de entrada.
+  - `formatTicketCode`: 1 → "TK-24817-01"; 12 → "TK-24817-12".
+  - `buildUserOrders`:
+    - filas de 2 pedidos intercalados → 2 `UserOrder` en orden de primera aparición, entradas ordenadas por `ticketCreatedAt`/`ticketId`, `position`/`total` por pedido, `code` "…-01", `status` copiado;
+    - `unitPrice` = centavos / 100; `seatLabel` "Fila F, asiento 8" con `seatNumber` "8", `null` sin asiento;
+    - `doorsOpenAt` nulo → `startsAt`; `venue.address` "" si no hay `addressLine`; `imageUrl` nulo se conserva; fechas en ISO;
+    - `[]` → `[]`; no muta la entrada;
+    - un pedido con entradas de varios estados (`valid`, `used`, `void`) conserva cada uno.
+  - `splitOrdersByEventDate`: `now` entre dos eventos → ambas listas (Próximas asc, Pasadas desc); `startsAt === now` → Próximas; todos futuros → `past: []`; todos pasados → `upcoming: []`; no muta.
   - `getTicketCountLabel`: 1 → "1 entrada"; 2 → "2 entradas".
   - `getOrderZonesLabel`: [Sur, Sur, Oriente] → "Sur, Oriente".
-  - `getHolderName`:
-    - `fullName` "  Ana Torres " → "Ana Torres";
-    - `fullName` vacío o null con email → email;
-    - sin ambos, o `null` → "Sin nombre".
-  - `resolveSelectedOrder`: código existente → ese pedido; código desconocido o `null` → el primero; `[]` → `null`.
+  - `getHolderName`: `displayName` "  Ana Torres " → "Ana Torres"; vacío o null con email → email; sin ambos o `null` → "Sin nombre".
+  - `resolveSelectedOrder`: código existente → ese pedido; desconocido o `null` → el primero; `[]` → `null`.
   - `stepTicketIndex`: (0, −1, 3) → 0; (0, 1, 3) → 1; (2, 1, 3) → 2; total 0 → 0.
-  - `TICKET_STATUS_LABELS.valid` → "Válida".
-- **`src/modules/tickets/services/tickets.service.test.ts`**:
-  - `getUserOrders("user_x")` → códigos ["TK-24817", "TK-24790", "TK-24852"], eventos `evt-002` / `evt-004` / `evt-007` y 3 / 1 / 2 entradas;
-  - el ticket de TK-24790 tiene `seatLabel`;
-  - mutar el resultado no afecta una segunda llamada;
-  - con `splitOrdersByEventDate(…, new Date(eventsService.getReferenceDate()))` → 3 próximos y 0 pasados; con `new Date("2026-10-10T00:00:00-05:00")` → TK-24817 en `past` y 2 en `upcoming`.
-- **`src/modules/tickets/components/my-tickets-view.test.tsx`** (RTL + user-event; `vi.mock("@/lib/download")` y `generateTicketPdf` como en `confirmation-actions.test.tsx`; datos de `ticketsService.getUserOrders`):
+  - `TICKET_STATUS_LABELS`: "Válida", "Usada", "Anulada".
+- **`src/modules/tickets/services/tickets.service.test.ts`** (`vi.mock("@/db/client")` con una cadena Drizzle falsa que devuelve filas fijas y captura el argumento de `where`; sin base real):
+  - `getUserOrders("uuid-x")` devuelve los `UserOrder` armados desde las filas (mismo resultado que `buildUserOrders`);
+  - el `where` capturado, renderizado con `new PgDialect().sqlToQuery(...)`, contiene `holder_user_id` y el parámetro `"uuid-x"` (AC2);
+  - sin filas → `[]`;
+  - la selección no incluye `qr_token` (las columnas pedidas no contienen `qrToken`) (AC3).
+- **`src/modules/tickets/components/my-tickets-view.test.tsx`** (RTL + user-event; `vi.mock("@/lib/download")` y `generateTicketPdf` como en `confirmation-actions.test.tsx`; fixtures construidas en el test con `buildUserOrders` a partir de filas sintéticas: un pedido de 3 entradas de zona, uno de 1 entrada con asiento y uno de 2):
   1. pestañas "Próximas (3)" seleccionada y "Pasadas (0)";
   2. primer pedido con `aria-current="true"` y el resto sin el atributo;
-  3. anterior/siguiente: estados y códigos de AC7, y `aria-live` en "Entrada N de M";
-  4. clic en el segundo pedido → `aria-current` se mueve, `<h2>` "La Casa de Bernarda Alba", "Entrada 1 de 1", "Fila F, asiento 8" y ambos botones `aria-disabled`;
-  5. Titular = `holderName` recibido; Estado "Válida";
-  6. "Descargar PDF" → `generateTicketPdf` con 3 páginas y `downloadBlob(…, "ticketera-TK-24817.pdf")`; "Agregar al calendario" → `"ticketera-TK-24817.ics"`;
-  7. teclado: foco en "Próximas", ArrowRight → foco en "Pasadas"; Enter → se muestra "Aún no tienes eventos pasados" con el link "Explorar eventos" (`href="/events"`);
-  8. `referenceDate` "2026-10-10T00:00:00-05:00" → "Próximas (2)" / "Pasadas (1)", y Pasadas lista TK-24817;
-  9. `orders=[]` → estado vacío de Próximas.
-- No requieren test unitario propio: `OrderList` y `TicketDetail` (cubiertos por el test de la vista), `ticket.types.ts`, el mock y la página.
+  3. anterior/siguiente: estados y códigos de AC9, y `aria-live`;
+  4. clic en el segundo pedido → `aria-current` se mueve, `<h2>` nuevo, "Entrada 1 de 1", asiento y ambos botones `aria-disabled`;
+  5. Titular = `holderName` recibido; Estado "Válida"; una entrada `used`/`void` muestra "Usada"/"Anulada";
+  6. "Descargar PDF" → `generateTicketPdf` con 3 páginas y `downloadBlob(…, "ticketera-<código>.pdf")`; "Agregar al calendario" → `".ics"`;
+  7. teclado: foco en "Próximas", ArrowRight → foco en "Pasadas"; Enter → estado vacío con "Explorar eventos" (`href="/events"`);
+  8. `referenceDate` posterior a un evento → "Próximas (2)" / "Pasadas (1)", y Pasadas lista ese pedido;
+  9. `orders=[]` → estado vacío en Próximas y en Pasadas;
+  10. imagen ausente (`imageUrl: null`) → no hay `<img>` roto y se ve el bloque muted.
+- No requieren test unitario propio: `OrderList` y `TicketDetail` (cubiertos por el test de la vista), `ticket.types.ts` y la página.
 
 ## Verificación
 
 - `npm run lint`
 - `npm run test`
 - `npm run build` (solo al final, lo corre el reviewer; nunca durante el bloque paralelo)
-- Manual (requiere 013–015 `done` y las claves de Clerk en `.env.local`; `npm run dev`):
+- Manual (requiere 013–015 y 019–020 `done`, claves de Clerk y `DATABASE_URL` en `.env.local`; `npm run dev`):
   1. Sin sesión, abrir `/my-tickets` → `/sign-in?redirect_url=%2Fmy-tickets`. Ingresar → vuelve a `/my-tickets`.
-  2. Desktop (1440px), claro y oscuro: comparar con §2.9 y la sección "Diseño". Recorrer las entradas de TK-24817 con mouse y teclado. Cambiar de pedido. Abrir "Pasadas (0)" → estado vacío → "Explorar eventos" lleva a `/events`.
-  3. Entre 1024 y 1279px: el bloque inferior de la entrada usa el layout apilado, sin desbordes.
-  4. Móvil (390px): pestañas a todo el ancho, lista horizontal desplazable (el foco visible no se recorta), entrada debajo, botones "PDF" y "Calendario".
-  5. "Descargar PDF" abre/descarga `ticketera-TK-24817.pdf` con 3 páginas. "Agregar al calendario" descarga el .ics.
-  6. Hacer una compra completa → en la confirmación, "Ver mis entradas" navega a `/my-tickets`. La compra no aparece (D6) y se ve la nota de modo demo.
-  7. Titular: un usuario con nombre muestra su nombre; uno sin nombre (si existe) muestra su email.
+  2. Con la base sin pedidos (estado actual): se ven los estados vacíos de Próximas y de Pasadas, sin errores; "Explorar eventos" lleva a `/events`.
+  3. Con datos (solo si se insertaron pedidos/entradas de prueba a mano en la base, o tras la spec de compra real): comparar con §2.9 y "Diseño" en desktop (1440px), claro y oscuro; recorrer las entradas con mouse y teclado; probar 1024–1279px y 390px; "Descargar PDF" y "Agregar al calendario".
+  4. Con dos usuarios con entradas distintas: cada uno ve **solo** las suyas.
+  5. Hacer una compra con el checkout mock → "Ver mis entradas" navega a `/my-tickets`; la compra no aparece (D0).
 
 ## Preguntas abiertas
 
-Ninguna bloqueante. Hay criterio propio revisable al aprobar, en particular:
+1. **Q1 — Datos para ver y verificar la pantalla antes de la compra real.** Hoy `orders`/`tickets` no se crean en ninguna parte y el seed de la 022 no los genera. Opciones:
+   - **(a, supuesta por esta spec)** Entregar solo la lectura (tests + estados vacíos) y verificar con datos cuando exista la compra real; inserciones manuales para pruebas.
+   - **(b)** Agregar una spec previa o hermana: seed de desarrollo de pedidos y entradas (`db:seed:orders --user-email`, no ejecutado, como la 022) para un usuario dado.
+   - **(c)** Posponer la 016 hasta tener la spec de compra real.
+   Decide el usuario; cambiar a (b) o (c) no altera los contratos de esta spec.
+2. **Q2 — Nota de "modo demo".** Se retiró (la pantalla ya no es mock). ¿Se quiere un aviso temporal cuando no hay pedidos, mientras el checkout siga siendo mock ("Tus compras de prueba todavía no se guardan aquí")? Por defecto: no.
+3. Criterios propios revisables: D3 (hora real en vez de `getReferenceDate`), D5 (selección local), D7 (`Tabs` en lugar de botones `aria-pressed`), D8 (se listan entradas `used`/`void`), D9 (PDF del pedido completo, solo las entradas del usuario), D14 (`cover_key` como imagen; bloque muted si falta).
 
-1. **D3:** "Pasadas" queda vacía con el mock (se ve el estado vacío del diseño), en vez de agregar un evento pasado a `EVENTS_MOCK`.
-2. **D6:** "Ver mis entradas" no preselecciona el pedido recién comprado, y se muestra la nota de modo demo. Alternativa descartada por KISS: pasar el pedido de la confirmación por query a `/my-tickets` y sumarlo a la lista.
-3. **D9:** "Descargar PDF" descarga el pedido completo, no solo la entrada visible.
-4. **D7:** `Tabs` (pestañas) en lugar de los botones `aria-pressed` del lienzo.
+**Resueltas desde la versión anterior:** el mock de pedidos y el "ahora" fijo (D3/D6 previos) quedan obsoletos; el titular ya no se obtiene de `currentUser()` (D4); el QR igual al de la confirmación (AC8 previo) se retira porque el `qrSeed` sale ahora del código real del pedido.

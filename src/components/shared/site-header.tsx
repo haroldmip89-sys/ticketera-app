@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs"
 
 import { BrandLogo } from "@/components/shared/brand-logo"
 import { SiteMobileMenu } from "@/components/shared/site-mobile-menu"
@@ -39,12 +40,27 @@ export function SiteHeader() {
 
         <div className="hidden items-center gap-2 lg:flex">
           <ThemeToggle />
-          <a
-            href="#"
-            className="focus-ring inline-flex h-11 items-center rounded-xl px-[18px] text-[0.9375rem] font-medium hover:bg-muted"
-          >
-            Iniciar sesión
-          </a>
+          <Show when="signed-out">
+            <SignInButton>
+              <button
+                type="button"
+                className="focus-ring inline-flex h-11 items-center rounded-xl px-[18px] text-[0.9375rem] font-medium hover:bg-muted"
+              >
+                Iniciar sesión
+              </button>
+            </SignInButton>
+            <SignUpButton>
+              <button
+                type="button"
+                className="focus-ring inline-flex h-11 items-center rounded-xl px-[18px] text-[0.9375rem] font-medium hover:bg-muted"
+              >
+                Registrarse
+              </button>
+            </SignUpButton>
+          </Show>
+          <Show when="signed-in">
+            <UserButton />
+          </Show>
           <a
             href="#"
             className="focus-ring inline-flex h-11 items-center rounded-xl border-[1.5px] border-input px-[18px] text-[0.9375rem] font-semibold hover:bg-muted"
@@ -54,12 +70,19 @@ export function SiteHeader() {
         </div>
 
         <div className="flex items-center gap-1 lg:hidden">
-          <a
-            href="#"
-            className="focus-ring inline-flex h-11 items-center rounded-xl px-3 text-sm font-medium"
-          >
-            Ingresar
-          </a>
+          <Show when="signed-out">
+            <SignInButton>
+              <button
+                type="button"
+                className="focus-ring inline-flex h-11 items-center rounded-xl px-3 text-sm font-medium"
+              >
+                Ingresar
+              </button>
+            </SignInButton>
+          </Show>
+          <Show when="signed-in">
+            <UserButton />
+          </Show>
           <SiteMobileMenu links={siteNavLinks} />
         </div>
       </div>

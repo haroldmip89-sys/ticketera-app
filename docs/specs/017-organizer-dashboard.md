@@ -1,244 +1,219 @@
-# 017 — Panel de organizador: shell del panel y "Resumen" (KPI y Mis eventos, datos mock)
+# 017 — Panel de organizador: "Resumen" y "Mis eventos" con datos reales, dentro del shell de administración
 
 - **Estado:** draft
 - **Modo:** SDD
+- **Actualizada tras 019–023** (2026-10-08): reemplaza el supuesto de mock + shell propio + metadata de Clerk por DB (019), guards respaldados por DB (020), seed (022) y el shell `/admin` con sidebar shadcn (023).
 - **Módulo(s):**
-  - `src/modules/organizers` (módulo creado por la 015): tipos `OrganizerEvent`, mock, ruta de "Crear evento", utils del resumen, service mock, **shell del panel** (sidebar desktop + barra móvil con `Sheet`) y vista "Resumen".
-  - `src/app/(organizer)` (route group **nuevo**): layout del panel, página `/organizer` y placeholder `/organizer/events/new`.
-  - `src/app/(site)/organizer/page.tsx`: **se elimina** (placeholder de la 015). `/organizer/onboarding` se queda en `(site)` sin cambios.
-  - `src/modules/auth`: hook `useSignOut` extraído del header (DRY con el pie del panel).
-  - `src/components/shared/brand-logo.tsx`: prop opcional `caption` ("Organizadores").
-  - `src/lib/format.ts`: formateador nuevo `formatCount`.
-  - `src/components/ui`: `table`, `progress`, `toggle-group` (+ `toggle`) vía CLI de shadcn.
-- **Depende de:** **013, 014 y 015 en `done`**. Consume:
-  - de la 013: `ORGANIZER_PATH`, `DEFAULT_AFTER_AUTH_PATH` (`src/lib/auth/auth-routes.ts`), el proxy (`/organizer/**` exige sesión) y `HeaderSessionActions` (C11);
-  - de la 013 (C10): `BrandLogo` con `tone`;
-  - de la 015: `requireOrganizer(options?)` → `OrganizerUser` (`src/lib/auth/guards.ts`), `/organizer/onboarding` y el placeholder `/organizer` que esta spec reemplaza.
-- **Roadmap:** 013 Auth base · 014 Registro y recuperación · 015 Roles y alta de organizador · 016 Mis entradas · **017 Panel de organizador (esta)** · 018 Crear evento (consume el shell, la ruta y los tipos de esta spec).
+  - `src/modules/organizers` (módulo **nuevo**): tipos `OrganizerEvent`, service de lectura sobre la DB, utils del resumen, vista "Resumen" y "Mis eventos".
+  - `src/modules/admin` (solo **ajustes mínimos** al shell de la 023 para que lo use el organizador: `admin-nav.ts`, `admin-shell.tsx`, `admin-sidebar.tsx`).
+  - `src/app/(organizer)` (route group **nuevo**): layout + páginas `/organizer`, `/organizer/events` y placeholder `/organizer/events/new`.
+  - `src/app/(admin)/admin/layout.tsx`: una línea (pasar `organizerActive` al shell).
+  - `src/lib/format.ts`: `formatCount`.
+  - `src/components/ui`: `progress`, `toggle-group` (+ `toggle`) vía CLI de shadcn (`table` ya existe).
+- **Fuentes:** System Design §3, §4.3 (guards), §4.4 (matriz), §6 (modelo de datos: `events`, `ticket_types`, `orders`, `organizer_profiles`). Specs 019 (esquema), 020 (guards/permisos), 022 (seed), 023 (shell).
+- **Depende de:** 019, 020, 022 y 023 en `done`. Consume:
+  - de la 020: `requireOrganizer(options?)` → `OrganizerUser { userId, organizerId, displayName, email }` y `requireUser()` → `AccessContext` (memoizado por request con `cache()`), en `src/lib/auth/guards.ts`; `ORGANIZER_PATH`, `ORGANIZER_ONBOARDING_PATH` en `src/lib/auth/auth-routes.ts`; el proxy (`/organizer/**` exige sesión).
+  - de la 023: `AdminShell`, `AdminSidebar`, `AdminHeader`, `getAdminNav` (con la sección "Organizador" ya declarada con Resumen, Mis eventos, Crear evento, Check-in, Pagos, hoy `href: null`).
+  - de la 019: tablas `events`, `ticket_types`, `orders`, `venues`, `categories`, `organizer_profiles`.
+  - de la 022: eventos del organizador sembrados (todos `published`; `cover_key` guarda una URL de Unsplash).
+- **Roadmap:** 013 Auth base · 014 Registro y recuperación · 015 Roles (reemplazada en datos por la 020) · 016 Mis entradas · **017 Panel de organizador (esta)** · 018 Crear evento (consume la ruta, el shell y los tipos de esta spec).
 
 ## Objetivo
 
-1. Un organizador que entra a `/organizer` ve el **panel** del diseño `OrgDashboard` / `OrgDashboardMobile`, sin el header ni el footer del sitio:
-   - **desktop (≥ `lg`)**: sidebar con logo "Ticketera · Organizadores", navegación (Resumen activa) y pie con su nombre, "Organizador" y "Cerrar sesión";
-   - **móvil (< `lg`)**: barra superior con logo y botón "Abrir menú del panel", que abre un `Sheet` con la misma navegación y el mismo pie.
-2. La vista **"Resumen"** muestra, con datos mock:
-   - 3 KPI (Entradas vendidas, Ingresos en USD, Eventos publicados) **calculados** a partir de los eventos;
-   - "Mis eventos" con filtro por estado (Todos / Publicados / Borradores): tabla semántica en pantallas anchas y lista de tarjetas en móvil, con barra de progreso vendidas/capacidad accesible.
-3. Queda el **contrato del shell** para la 018: route group `(organizer)` con layout protegido por `requireOrganizer()`, constante `ORGANIZER_NEW_EVENT_PATH` y tipo `OrganizerEvent`. "+ Crear evento" lleva a un placeholder protegido que la 018 reemplaza.
+1. Un organizador `active` que entra a `/organizer` ve su **Resumen** dentro del shell existente (sidebar shadcn colapsable, header con breadcrumb "Organizador / Resumen", pie con sesión), con el ítem "Resumen" activo (`aria-current="page"`). "Mis eventos" abre `/organizer/events`.
+2. Los datos salen de la **DB**, filtrados siempre por el `organizerId` del organizador autenticado (obtenido en servidor con `requireOrganizer()`, nunca del cliente ni de la URL):
+   - 3 KPI (Entradas vendidas, Ingresos en USD, Eventos publicados) calculados a partir de sus eventos;
+   - "Mis eventos" con filtro por estado (Todos / Publicados / Borradores): tabla semántica en pantallas anchas y tarjetas en pantallas angostas, con barra de progreso vendidas/capacidad accesible.
+3. Contrato para la 018: route group `(organizer)` con layout protegido por `requireOrganizer()` y `AdminShell`, constantes de ruta, tipo `OrganizerEvent` y service `organizerEventsService`. "Crear evento" lleva a un placeholder protegido que la 018 reemplaza.
 
 Todo en verde: `lint`, `test` y `build`.
 
 ## Fuera de alcance
 
-- **Persistencia y datos reales:** tablas `events`, `ticket_types`, `orders`, `organizer_profiles` (System Design §6). El service devuelve un mock y no filtra por organizador (TEMPORAL, C5).
-- **Ventas reales, Stripe Connect, payouts y reembolsos.** Los ingresos son un número mock en USD.
-- **Páginas "Mis eventos", "Ventas" y "Configuración"**: en esta spec son ítems no navegables con "Próximamente" (D4). Irán en fases posteriores (sin número asignado).
-- **Crear evento (018):** aquí solo existe el placeholder de `/organizer/events/new` (D6).
-- **Editar, publicar, despublicar o cancelar eventos** y la acción "Ver ventas" del diseño (D5).
-- Paginación, orden por columnas, búsqueda y exportación de la tabla. Con 4 filas mock no aportan (YAGNI); por eso **no** se usa `@tanstack/react-table` (D7).
-- `ThemeToggle` dentro del panel: el diseño no lo muestra. El tema elegido en el sitio se conserva.
-- Cambios en `src/proxy.ts` (ya protege `/organizer/**`), en `guards.ts`/`roles.ts` (015) y en `UserMenu` ("Panel de organizador" ya apunta a `/organizer`).
+- **Crear/editar/publicar/cancelar eventos** y "Ver ventas" por evento: 018 y fases posteriores. Solo existe el placeholder de `/organizer/events/new`.
+- **Check-in, Pagos y Configuración**: siguen "Próximamente" en el shell (023 D3).
+- **Stripe Connect, payouts y reembolsos.** Los ingresos son lectura de órdenes pagadas.
+- **Pantalla `/organizer/onboarding` ("solicita acceso", 020 Q2):** no existe hoy; `requireOrganizer()` redirige allí a quien no sea organizador `active` y esa ruta da 404 hasta que otra spec la cree (ver Preguntas abiertas 4). No se toca aquí.
+- **`becomeOrganizer`, metadata de Clerk y `isOrganizer(publicMetadata)`** como criterio de acceso: eliminados (020: la base manda; `publicMetadata` es solo copia).
+- Paginación, orden por columnas, búsqueda y exportación de la tabla; `@tanstack/react-table` no se usa (KISS, D6).
+- Cambios en `src/proxy.ts`, `guards.ts`, `permissions.ts`, el esquema de la DB y el seed.
 - Ediciones manuales de `src/components/ui/**` (solo se agregan archivos con la CLI).
+- Mover el shell de `src/modules/admin` a `src/components/shared` (la 023 lo sugería "cuando lo adopte la 017"); se evalúa en una fase de refactor para no mezclar movimientos de archivos con esta entrega. El layout de `src/app` lo importa directamente (es composición de routing).
 
 ## Precondiciones
 
-- 013, 014 y 015 en `done` (el developer verifica que existan `src/lib/auth/auth-routes.ts`, `src/lib/auth/guards.ts`, `src/modules/auth/components/header-session-actions.tsx`, `src/app/(site)/organizer/page.tsx` y `src/app/(site)/organizer/onboarding/page.tsx`; si falta alguno → `BLOCKED`).
-- Sin dependencias npm nuevas (`@base-ui/react` 1.8.0 ya trae `progress`, `toggle` y `toggle-group`).
-- Si la 016 ya agregó `toggle-group`/`toggle` con la CLI, P1 omite ese `add` (no se sobrescribe nada).
+- 019, 020, 022 y 023 en `done`. El developer verifica que existan `src/db/schema/events.ts`, `src/lib/auth/guards.ts` (con `requireOrganizer` que devuelve `organizerId`), `src/modules/admin/components/admin-shell.tsx` y `src/modules/admin/utils/admin-nav.ts`; si falta alguno → `BLOCKED`.
+- Sin dependencias npm nuevas (`@base-ui/react` ya trae `progress`, `toggle` y `toggle-group`). `next.config.ts` ya permite `images.unsplash.com`.
+- Si la 016 ya agregó `toggle-group`/`toggle` con la CLI, P1 omite ese `add`.
 
 ## Inventario (existente vs. nuevo)
 
 | Pieza | Acción | Ubicación | Notas |
 |---|---|---|---|
-| `requireOrganizer`, `OrganizerUser` | reutilizar | `src/lib/auth/guards.ts` (015) | Layout y cada página del grupo lo llaman (D2). |
-| `ORGANIZER_PATH`, `DEFAULT_AFTER_AUTH_PATH` | reutilizar | `src/lib/auth/auth-routes.ts` (013) | `ORGANIZER_PATH` = destino de "Resumen". |
-| `ORGANIZER_NEW_EVENT_PATH` | crear | `src/modules/organizers/utils/organizer-routes.ts` | Ruta propia del dominio organizers; no se toca `auth-routes.ts`. `/organizer/**` ya está protegido por el proxy. |
-| `useClerk().signOut({ redirectUrl })` | **extender (extraer)** | `src/modules/auth/hooks/use-sign-out.ts` (nuevo) + `header-session-actions.tsx` | Hoy está inline en `HeaderSessionActions` (013 C11). Con el pie del panel hay 2 consumidores → hook `useSignOut` (DRY). El header pasa a usarlo sin cambiar comportamiento. |
-| `BrandLogo` | extender | `src/components/shared/brand-logo.tsx` | Prop opcional `caption` para "Organizadores" debajo de "Ticketera" (C8). Sin `caption` queda idéntico. |
-| `formatPrice`, `formatDateShort` | reutilizar | `src/lib/format.ts` | Ingresos en USD (`$464,400`) y fecha corta (`vie 16 oct`). |
-| `formatCount` | crear | `src/lib/format.ts` | No existe un formateador de enteros. Reutiliza la agrupación de miles de `formatPrice` (helper privado extraído). |
-| `getEventHref` | reutilizar | `src/modules/events/utils/event-routes.ts` | Acción "Ver evento" de eventos publicados (D5). |
-| `EventCategory`, `EVENT_CATEGORIES` | reutilizar | `src/modules/events/types/event.types.ts`, `src/modules/events/data/event-categories.ts` | El mock referencia las categorías existentes, sin duplicarlas. |
-| `Sheet*` | reutilizar | `src/components/ui/sheet.tsx` | Menú móvil del panel (patrón de `SiteMobileMenu`). |
-| `Button`, `Badge`, `Empty*` | reutilizar | `src/components/ui/` | Botón de cerrar sesión y trigger del menú; badge de estado; placeholder de crear evento. |
-| `Table*` | agregar de shadcn | `src/components/ui/table.tsx` | **Verificado** con `npx shadcn@latest view table`: existe en `base-nova` (HTML semántico, sin Base UI). |
-| `Progress` | agregar de shadcn | `src/components/ui/progress.tsx` | **Verificado**: `base-nova` sobre `@base-ui/react/progress` (`role="progressbar"`, `aria-valuenow`, `getAriaValueText`). |
-| `ToggleGroup`, `ToggleGroupItem` (+ `toggle.tsx`) | agregar de shadcn | `src/components/ui/toggle-group.tsx`, `src/components/ui/toggle.tsx` | **Verificado**: `base-nova` sobre `@base-ui/react/toggle-group` (botones con `aria-pressed`, foco con flechas). Es el "segmented" de filtros del diseño. `ToggleChip` no aplica (estilo chip, no segmented). |
-| `@tanstack/react-table` | no se usa | — | D7. |
+| `requireOrganizer`, `OrganizerUser`, `requireUser`, `AccessContext` | reutilizar | `src/lib/auth/guards.ts` (020) | `organizerId` = `organizer_profiles.id` = `events.organizer_id`. La resolución de acceso está memoizada con `cache()` por request: llamarlo en layout **y** página no repite la consulta (resuelve la pregunta obsoleta del doble `currentUser()`). |
+| `ORGANIZER_PATH`, `ORGANIZER_ONBOARDING_PATH` | reutilizar | `src/lib/auth/auth-routes.ts` | `ORGANIZER_PATH` = "Resumen". |
+| `ORGANIZER_EVENTS_PATH`, `ORGANIZER_NEW_EVENT_PATH` | crear | `src/modules/organizers/utils/organizer-routes.ts` | Rutas propias del dominio; no se toca `auth-routes.ts`. `/organizer/**` ya está protegido por el proxy. |
+| `AdminShell`, `AdminSidebar`, `AdminHeader`, `getAdminNav`, `findNavMatch`, `isNavItemActive` | **extender** | `src/modules/admin/components/*`, `src/modules/admin/utils/admin-nav.ts` (023) | Se reutilizan tal cual el layout, colapso a rail, drawer móvil, breadcrumb y pie. Ajustes (D2, D3): enlaces de la sección "Organizador", `exact` en ítems, `homeHref` del logo. Reemplaza al shell propio (`OrganizerShell`, `OrganizerSidebar`, `OrganizerMobileNav`) de la versión anterior de esta spec. |
+| Cierre de sesión | reutilizar | pie de `AdminSidebar` (`useClerk().signOut`) | Ya no se extrae `useSignOut` ni se extiende `BrandLogo` (`caption`): sin segundo consumidor. |
+| `formatPrice`, `formatDateShort` | reutilizar | `src/lib/format.ts` | Ingresos USD y fecha corta. |
+| `formatCount` | crear | `src/lib/format.ts` | No existe formateador de enteros. Reutiliza la agrupación de miles de `formatPrice` (helper privado extraído). |
+| `getEventHref` | reutilizar | `src/modules/events/utils/event-routes.ts` | Acción "Ver evento" (D5). |
+| `getDb`, tablas `events`, `ticketTypes`, `orders`, `venues`, `categories` | reutilizar | `src/db/client.ts`, `src/db/schema/*` | Lectura con Drizzle; mismo patrón de service que `usersService`. |
+| `Button`, `Badge`, `Empty*`, `Table*`, `Skeleton` | reutilizar | `src/components/ui/` | `Badge` ya tiene la variante `success` (023). |
+| `Progress` | agregar de shadcn | `src/components/ui/progress.tsx` | `npx shadcn@latest add progress` (`base-nova` sobre `@base-ui/react/progress`: `role="progressbar"`, `aria-valuenow`, `getAriaValueText`). Verificar con `npx shadcn@latest view progress` antes. |
+| `ToggleGroup`, `ToggleGroupItem` (+ `toggle.tsx`) | agregar de shadcn | `src/components/ui/toggle-group.tsx`, `toggle.tsx` | Segmented de filtros (`aria-pressed`, flechas). `ToggleChip` no aplica (estilo chip). |
+| `@tanstack/react-table` | no se usa | — | D6. |
+| Mock `ORGANIZER_EVENTS_MOCK` y `organizerEventsService` sobre mock | **no se crea** | — | Sustituidos por el service sobre DB (C3). |
 | `OrganizerEvent`, `OrganizerEventStatus` | crear | `src/modules/organizers/types/organizer-event.types.ts` | No existe. Lo consume la 018. |
-| `ORGANIZER_EVENTS_MOCK` | crear | `src/modules/organizers/data/organizer-events.mock.ts` | C3. |
+| Mapper fila→`OrganizerEvent` | crear | `src/modules/organizers/utils/organizer-event-mapper.ts` | Puro y testeado (centavos→dólares, ceros, portada). |
 | Utils del resumen (KPI, filtro, %, ingresos, href) | crear | `src/modules/organizers/utils/organizer-dashboard.ts` | Puros y testeados. |
-| `organizerEventsService` | crear | `src/modules/organizers/services/organizer-events.service.ts` | Mismo patrón que `eventsService` (async sobre mock). |
-| Shell del panel | crear | `src/modules/organizers/components/organizer-shell.tsx`, `organizer-sidebar.tsx`, `organizer-mobile-nav.tsx` | No existe un layout con sidebar. |
-| Vista Resumen | crear | `src/modules/organizers/components/organizer-dashboard.tsx`, `organizer-events-section.tsx`, `organizer-events-table.tsx`, `organizer-event-list.tsx`, `organizer-event-status-badge.tsx`, `organizer-event-sales.tsx` | Badge y ventas se comparten entre tabla y tarjetas (DRY). |
+| `organizerEventsService` | crear | `src/modules/organizers/services/organizer-events.service.ts` | Lectura filtrada por `organizerId`. |
+| Vista | crear | `src/modules/organizers/components/*` | Ver C7. Badge y ventas se comparten entre tabla y tarjetas (DRY). |
 
 ## Decisiones
 
-### D1 — Route groups: panel en `(organizer)`, onboarding se queda en `(site)`
-
-Árbol resultante:
+### D1 — Rutas: panel en `/organizer/**`, grupo `(organizer)`, shell compartido (ver Pregunta abierta 1)
 
 ```
 src/app/
-  (site)/
-    layout.tsx                       ← header + footer del sitio (sin cambios)
-    organizer/
-      onboarding/page.tsx            ← sin cambios (015). NO pasa por requireOrganizer()
-      (page.tsx eliminado)
+  (admin)/admin/layout.tsx           ← requireStaff + AdminShell (023); 1 línea nueva: organizerActive
   (organizer)/
-    layout.tsx                       ← nuevo: requireOrganizer() + <OrganizerShell>
+    layout.tsx                       ← requireOrganizer() + requireUser() (staffRole) + AdminShell
     organizer/
-      page.tsx                       ← nuevo: "/organizer" (Resumen)
-      events/new/page.tsx            ← nuevo: placeholder "/organizer/events/new" (la 018 lo reemplaza)
+      page.tsx                       ← "/organizer"            → Resumen
+      events/page.tsx                ← "/organizer/events"     → Mis eventos
+      events/new/page.tsx            ← "/organizer/events/new" → placeholder (la 018 lo reemplaza)
 ```
 
-- Ninguna URL se define dos veces: `/organizer` solo existe en `(organizer)` y `/organizer/onboarding` solo en `(site)`. Compartir el nombre de carpeta `organizer` entre grupos está permitido; lo prohibido es que dos `page` resuelvan a la misma URL (`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route-groups.md`, "Conflicting paths").
-- Cada página recibe solo los layouts de su ruta de archivos: `/organizer/onboarding` usa root + `(site)/layout.tsx` (sin shell ni guard de organizador, así un cliente puede activar su cuenta); `/organizer` y `/organizer/events/new` usan root + `(organizer)/layout.tsx`.
-- El layout está a nivel de grupo (`(organizer)/layout.tsx`), no en `(organizer)/organizer/layout.tsx`: todo lo que se agregue al grupo hereda el shell.
-- No hay varios root layouts: la navegación entre `(site)` y `(organizer)` es una transición normal (sin recarga completa).
+- `ORGANIZER_PATH` (`/organizer`) ya es el destino que usan el proxy, los guards y `UserMenu`; el panel vive ahí. `/admin/**` sigue exigiendo staff (023): un organizador no staff **no** entra a `/admin`.
+- El grupo `(organizer)` es solo para organizadores `active`. Una futura pantalla `/organizer/onboarding` (quien aún no lo es) debe vivir **fuera** del grupo (p. ej. `(site)/organizer/onboarding`), o `requireOrganizer()` del layout la redirigiría a sí misma en bucle.
+- Compartir el prefijo `organizer` entre grupos está permitido; lo prohibido es que dos `page` resuelvan a la misma URL.
 
-### D2 — Guard en el layout **y** en cada página
+### D2 — El shell de la 023 se reutiliza con ajustes mínimos
 
-- El layout llama a `requireOrganizer({ returnTo: ORGANIZER_PATH })`: protege el shell y obtiene el nombre del pie.
-- Cada página llama además a `requireOrganizer({ returnTo: <su ruta> })`. Motivo: por *Partial Rendering* el layout no se vuelve a ejecutar al navegar entre páginas del grupo (`node_modules/next/dist/docs/01-app/02-guides/authentication.md`, "Layouts and auth checks"). La página además necesita `userId` para pedir sus datos.
-- Costo: hasta 2 llamadas a `currentUser()` por request (TEMPORAL, hasta que exista la base). Ver Preguntas abiertas.
+- `AdminShell` ya soporta `staffRole = null` (muestra solo la sección "Organizador" y el rol "Organizador") y `defaultOpen` desde la cookie `sidebar_state`.
+- Ajustes:
+  1. `getAdminNav(staffRole, options?: { organizerActive?: boolean })`: con `organizerActive === true` la sección "Organizador" tiene `href` en **Resumen** (`/organizer`), **Mis eventos** (`/organizer/events`) y **Crear evento** (`/organizer/events/new`); **Check-in** y **Pagos** siguen `null`. Sin `organizerActive` (valor por defecto) toda la sección queda `null` ("Próximamente"), así un admin sin perfil de organizador no ve enlaces que lo mandarían al onboarding. El layout de `/admin` pasa `organizerActive = ctx.organizer?.status === "active"`; el de `(organizer)` pasa `true`.
+  2. `AdminNavItem` gana `exact?: boolean`; `isNavItemActive` con `exact` compara solo igualdad. Resumen y Mis eventos son `exact` (si no, `/organizer` marcaría activo "Resumen" en `/organizer/events` y `/organizer/events` marcaría "Mis eventos" en `/organizer/events/new`).
+  3. `AdminShell`/`AdminSidebar` reciben `homeHref?: string` (por defecto `/admin/users`); el logo del sidebar enlaza a ese destino (el layout organizador pasa `ORGANIZER_PATH`) y `aria-label` "Ticketera, administración" pasa a `homeLabel` (por defecto igual; organizador: "Ticketera, panel de organizador").
+  4. `AdminShell` recibe `organizerActive` y lo pasa a `getAdminNav`.
+- El breadcrumb del header (`findNavMatch`) ya produce "Organizador / Resumen" y "Organizador / Mis eventos". En `/organizer/events/new` produce "Organizador / Crear evento".
 
-### D3 — Moneda USD y formato de números
+### D3 — Guard en el layout y en cada página
 
-- El diseño usa `S/` (soles) y `toLocaleString('es-PE')`. El proyecto usa **USD** (System Design §6.1) y `formatPrice` → `$464,400`.
-- Conteos con `formatCount` → `8,146` (coma de miles, igual que `formatPrice`).
-- `OrganizerEvent.revenue` está en **dólares** (número, como `TicketType.price`), no en centavos: el service convertirá desde `*_cents` cuando exista la base.
+- Layout: `const organizer = await requireOrganizer({ returnTo: ORGANIZER_PATH })` y `const ctx = await requireUser()` (memoizado, sin consulta extra) para `staffRole`. Protege el shell y da el nombre del pie.
+- Cada página llama de nuevo a `requireOrganizer({ returnTo: <su ruta> })` porque por *Partial Rendering* el layout no se reevalúa al navegar entre páginas del grupo (`node_modules/next/dist/docs/01-app/02-guides/authentication.md`, "Layouts and auth checks"); además necesita `organizerId` para consultar. El costo es nulo gracias a `cache()` (020).
+- El `organizerId` **solo** sale del guard. Ninguna página, componente cliente ni Server Action de esta spec acepta un id de organizador como parámetro.
 
-### D4 — Navegación del sidebar sin links muertos
+### D4 — Datos (fuente de cada campo de `OrganizerEvent`)
 
-- **Resumen** es el único link (`href = ORGANIZER_PATH`). Activo cuando `pathname === ORGANIZER_PATH`: `aria-current="page"`.
-- **Mis eventos, Ventas, Configuración** se renderizan (para conservar el diseño) como elementos **no interactivos** (`<span>`, no `<a>` ni `<button>`, sin `href`, no enfocables), con el texto en `text-muted-foreground` y una etiqueta "Próximamente". El lector de pantalla lee "Mis eventos Próximamente".
-- En `/organizer/events/new` (018) ningún ítem queda activo; la 018 puede decidir otra cosa.
+- Eventos: `events WHERE organizer_id = :organizerId` (cualquier `status`), orden `starts_at` ascendente. Índice existente `events_organizer_id_idx`.
+- `city` = `venues.city`; `categoryName` = `categories.name` (join por `venue_id`/`category_id`, ambos `restrict`, no nulos).
+- `capacity` = `Σ ticket_types.capacity` y `ticketsSold` = `Σ ticket_types.sold_count` por evento (0 si no tiene tipos).
+- `revenue` = `Σ orders.subtotal_cents / 100` de órdenes `status = 'paid'` del evento (USD en dólares; **excluye** la comisión de servicio, que no es del organizador; las órdenes `refunded`/`failed`/`pending` no cuentan). Ver Pregunta abierta 3: en datos solo sembrados (022) no hay órdenes, así que `Ingresos` mostrará `$0` aunque haya vendidas.
+- `imageUrl` = `events.cover_key` si es una URL `https://images.unsplash.com/…` (la que escribe el seed 022); cualquier otro valor o `null` → `null` y la UI muestra un recuadro neutro con icono (TEMPORAL hasta que existan subidas de portada, 018+).
+- Para no multiplicar filas por joins, el service hace **tres consultas**: eventos (+ venue + categoría), agregados de `ticket_types` agrupados por `event_id` y agregados de `orders` agrupados por `event_id`, ambos con `inArray(eventIds)`; el mapper une los resultados.
+- Mercado: USD (System Design §6.1), `formatPrice` → `$464,400`; conteos con `formatCount` → `8,146`.
 
 ### D5 — Acciones de fila sin backend
 
-- **Publicado** → link outline **"Ver evento"** → `getEventHref(slug)` (detalle público, que existe porque los slugs publicados del mock existen en `EVENTS_MOCK`, C3). Reemplaza "Ver ventas" del diseño, porque no hay página de ventas.
-- **Borrador, cancelado, suspendido** → **sin acción** (celda vacía en la tabla; sin botón en la tarjeta). "Editar" del diseño queda fuera de alcance.
+- **Publicado** → link outline **"Ver evento"** → `getEventHref(slug)` (detalle público).
+- **Borrador, cancelado, suspendido** → sin acción. "Editar" y "Ver ventas" quedan fuera de alcance.
 - La regla vive en un util testeado (`getOrganizerEventPublicHref`).
 
-### D6 — "+ Crear evento" lleva a un placeholder
+### D6 — Sin `@tanstack/react-table`
 
-- El botón enlaza a `ORGANIZER_NEW_EVENT_PATH`. Para no dejar un link muerto, esta spec crea `src/app/(organizer)/organizer/events/new/page.tsx` mínimo (C10), protegido y dentro del shell. **La 018 reemplaza ese archivo.**
+El filtro es un util puro y no hay orden ni paginación. Tabla HTML con `Table*` de shadcn. Se reconsidera cuando "Mis eventos" necesite orden/paginación.
 
-### D7 — Sin `@tanstack/react-table`
+### D7 — Breakpoints
 
-- 4 filas, sin orden, paginación ni selección. El filtro es un util puro. Una tabla HTML con `Table*` de shadcn es lo más simple (KISS). Se reconsidera cuando "Mis eventos" tenga orden/paginación.
+- Sidebar/drawer: los de la 023 (`md`, 768 px; el drawer lo gestiona el componente).
+- Tabla desde `xl` (1280 px): con el sidebar expandido (264 px) el área útil a 1280 px es ≈ 980 px y las 5 columnas (≈ 680 px fijos + título) caben; por debajo, tarjetas (1 columna; `md:grid-cols-2`). El área de contenido del shell es `max-w-6xl`; no se agrega otro contenedor.
+- KPI en un único `<dl>`: `grid-cols-2 gap-3 lg:grid-cols-3 lg:gap-5`; en móvil "Ingresos" ocupa las 2 columnas y va primero (orden de DOM); en `lg` el orden visual es Entradas vendidas, Ingresos, Eventos publicados (`lg:order-*`).
 
-### D8 — Breakpoints
+### D8 — KPI sobre todos los eventos del organizador
 
-- Sidebar desde `lg` (1024 px); por debajo, barra superior + `Sheet`.
-- Tabla desde `xl` (1280 px). Entre `lg` y `xl` el área de contenido (≈ 664 px) no entra las 5 columnas del diseño (≈ 680 px fijos + título), así que se usan las tarjetas. Tarjetas en 1 columna, y en 2 desde `md` (`md:grid-cols-2`).
-- Los KPI siguen el orden del diseño en cada tamaño (C9) usando `order` de CSS: el orden del DOM es el de móvil (Ingresos, Entradas vendidas, Eventos publicados). Son métricas independientes, así que el cambio visual no altera el sentido.
-
-### D9 — KPI sobre todos los eventos
-
-- `ticketsSold` e `revenue` suman **todos** los eventos (los borradores tienen 0). `publishedCount` cuenta `status === "published"`.
-- Cuando existan cancelaciones con reembolsos, la regla se revisará en la fase de Ventas (no hay eventos cancelados en el mock).
+`ticketsSold` e `ingresos` suman **todos** los eventos; `publishedCount` cuenta `status === "published"`. Con reembolsos/cancelaciones la regla se revisa en la fase de Ventas.
 
 ## Contratos
 
 ### C1 — Tipos (`src/modules/organizers/types/organizer-event.types.ts`)
 
 ```ts
-import type { EventCategory } from "@/modules/events/types/event.types"
-
-/** Enum `event_status` del System Design §6.3. */
+/** Enum `event_status` (019). */
 export type OrganizerEventStatus = "draft" | "published" | "cancelled" | "suspended"
 
 /** Evento visto por su organizador. Serializable (server → client). */
 export type OrganizerEvent = {
-  id: string
-  /** kebab-case; en publicados coincide con el slug público (/events/[slug]). */
-  slug: string
+  id: string                // events.id (uuid)
+  slug: string              // events.slug; en publicados es el slug público (/events/[slug])
   title: string
-  category: EventCategory
-  /** ISO 8601 con offset "-05:00". */
-  startsAt: string
-  city: string
-  imageUrl: string
-  imageAlt: string
+  categoryName: string      // categories.name
+  startsAt: string          // ISO 8601 (events.starts_at, UTC)
+  city: string              // venues.city
+  imageUrl: string | null   // ver D4
   status: OrganizerEventStatus
-  /** Σ ticket_types.capacity (entero ≥ 0). */
-  capacity: number
-  /** Σ ticket_types.sold_count (entero ≥ 0). */
-  ticketsSold: number
-  /** Ingresos brutos en USD (dólares, no centavos). */
-  revenue: number
+  capacity: number          // Σ ticket_types.capacity (entero ≥ 0)
+  ticketsSold: number       // Σ ticket_types.sold_count (entero ≥ 0)
+  revenue: number           // USD en dólares (Σ paid orders.subtotal_cents / 100)
 }
 ```
 
-### C2 — Ruta (`src/modules/organizers/utils/organizer-routes.ts`)
+### C2 — Rutas (`src/modules/organizers/utils/organizer-routes.ts`)
 
 ```ts
+export const ORGANIZER_EVENTS_PATH = "/organizer/events"
 /** Crear evento: placeholder en la 017, página real en la 018. */
 export const ORGANIZER_NEW_EVENT_PATH = "/organizer/events/new"
 ```
 
-### C3 — Mock (`src/modules/organizers/data/organizer-events.mock.ts`)
+`ORGANIZER_PATH` se importa de `@/lib/auth/auth-routes`.
 
-```ts
-export const ORGANIZER_EVENTS_MOCK: readonly OrganizerEvent[]
-```
-
-Exactamente estos 4 eventos (categorías tomadas de `EVENT_CATEGORIES` por `id`; `imageUrl` = `https://images.unsplash.com/{photoId}?auto=format&fit=crop&w=800&q=70`, mismas fotos del catálogo):
-
-| id | slug | title | category | startsAt | city | status | capacity | ticketsSold | revenue | photoId / imageAlt |
-|---|---|---|---|---|---|---|---|---|---|---|
-| `org-evt-001` | `festival-sonidos-del-sur` | Festival Sonidos del Sur | `festivals` | `2026-10-16T14:00:00-05:00` | Lima | published | 8000 | 7420 | 445200 | `photo-1492684223066-81342ee5ff30` / "Confeti cayendo sobre el público de un festival" |
-| `org-evt-002` | `la-casa-de-bernarda-alba` | La Casa de Bernarda Alba | `theater` | `2026-10-22T19:30:00-05:00` | Lima | published | 420 | 312 | 10920 | `photo-1503095396549-807759245b35` / "Escenario de teatro con telón rojo" |
-| `org-evt-003` | `circo-de-las-maravillas` | Circo de las Maravillas | `family` | `2026-11-22T16:00:00-05:00` | Lima | published | 1200 | 414 | 8280 | `photo-1504196606672-aef5c9cefc92` / "Mano sosteniendo un racimo de globos de colores" |
-| `org-evt-004` | `muestra-de-arte-joven` | Muestra de Arte Joven | `arts` | `2026-12-12T11:00:00-05:00` | Arequipa | draft | 600 | 0 | 0 | `photo-1572947650440-e8a97ef053b2` / "Sala de exposición en penumbra con obras coloridas en las paredes" |
-
-- Los 3 publicados reutilizan título, slug, fecha, ciudad e imagen de `EVENTS_MOCK` (así "Ver evento" no da 404). `revenue` = `ticketsSold × priceFrom` del catálogo (60, 35, 20).
-- KPI resultantes: **8,146** entradas, **$464,400**, **3** publicados.
-
-### C4 — Utils (`src/modules/organizers/utils/organizer-dashboard.ts`, puros)
-
-```ts
-export type OrganizerEventFilter = "all" | "published" | "draft"
-
-/** Orden del segmented: Todos, Publicados, Borradores. */
-export const ORGANIZER_EVENT_FILTERS: readonly { value: OrganizerEventFilter; label: string }[]
-
-/** draft "Borrador", published "Publicado", cancelled "Cancelado", suspended "Suspendido". */
-export const ORGANIZER_EVENT_STATUS_LABELS: Record<OrganizerEventStatus, string>
-
-export type OrganizerDashboardStats = { ticketsSold: number; revenue: number; publishedCount: number }
-
-/** Suma ticketsSold y revenue de todos los eventos; cuenta status === "published". [] → ceros. */
-export function getOrganizerDashboardStats(events: readonly OrganizerEvent[]): OrganizerDashboardStats
-
-/** "all" → copia de todos; si no, solo los de ese status. Conserva el orden. No muta la entrada. */
-export function filterOrganizerEvents(
-  events: readonly OrganizerEvent[],
-  filter: OrganizerEventFilter
-): OrganizerEvent[]
-
-/** Entero 0–100: Math.round(ticketsSold / capacity * 100) acotado a [0, 100].
- *  capacity ≤ 0 o valores no finitos → 0. */
-export function getSoldPercentage(ticketsSold: number, capacity: number): number
-
-/** draft → null (la UI muestra "—"); otro status → formatPrice(revenue). */
-export function formatOrganizerEventRevenue(event: Pick<OrganizerEvent, "status" | "revenue">): string | null
-
-/** published → getEventHref(slug); otro status → null (sin acción, D5). */
-export function getOrganizerEventPublicHref(event: Pick<OrganizerEvent, "status" | "slug">): string | null
-```
-
-### C5 — Service (`src/modules/organizers/services/organizer-events.service.ts`)
+### C3 — Service (`src/modules/organizers/services/organizer-events.service.ts`)
 
 ```ts
 export const organizerEventsService = {
-  /** Eventos del organizador por startsAt ascendente (copia nueva).
-   *  TEMPORAL (mock): ignora organizerUserId y devuelve ORGANIZER_EVENTS_MOCK.
-   *  Con base: events.organizer_id del organizer_profiles del usuario. */
-  async getByOrganizer(organizerUserId: string): Promise<OrganizerEvent[]>
+  /** Eventos del organizador `organizerId` (organizer_profiles.id) por startsAt ascendente.
+   *  Solo lectura; tres consultas (D4). Sin eventos → []. Nunca devuelve eventos de otro organizador. */
+  async getByOrganizer(organizerId: string): Promise<OrganizerEvent[]>
 }
+```
+
+### C4 — Mapper (`src/modules/organizers/utils/organizer-event-mapper.ts`, puro)
+
+```ts
+export type OrganizerEventRow = {
+  id: string; slug: string; title: string; status: OrganizerEventStatus
+  startsAt: Date; coverKey: string | null; city: string; categoryName: string
+}
+export type OrganizerEventTotals = { capacity: number; soldCount: number }  // por event_id
+export function toOrganizerEvent(
+  row: OrganizerEventRow,
+  totals: OrganizerEventTotals | undefined,   // undefined → 0/0
+  paidSubtotalCents: number | undefined,      // undefined → 0
+): OrganizerEvent
+// startsAt → toISOString(); revenue = paidSubtotalCents / 100; imageUrl según D4.
+```
+
+### C5 — Utils (`src/modules/organizers/utils/organizer-dashboard.ts`, puros)
+
+```ts
+export type OrganizerEventFilter = "all" | "published" | "draft"
+/** Orden del segmented: Todos, Publicados, Borradores. */
+export const ORGANIZER_EVENT_FILTERS: readonly { value: OrganizerEventFilter; label: string }[]
+/** draft "Borrador", published "Publicado", cancelled "Cancelado", suspended "Suspendido". */
+export const ORGANIZER_EVENT_STATUS_LABELS: Record<OrganizerEventStatus, string>
+export type OrganizerDashboardStats = { ticketsSold: number; revenue: number; publishedCount: number }
+/** Suma ticketsSold y revenue de todos los eventos; cuenta status === "published". [] → ceros. */
+export function getOrganizerDashboardStats(events: readonly OrganizerEvent[]): OrganizerDashboardStats
+/** "all" → copia de todos; si no, solo los de ese status. Conserva el orden. No muta la entrada. */
+export function filterOrganizerEvents(events: readonly OrganizerEvent[], filter: OrganizerEventFilter): OrganizerEvent[]
+/** Entero 0–100: Math.round(ticketsSold / capacity * 100) acotado; capacity ≤ 0 o no finito → 0. */
+export function getSoldPercentage(ticketsSold: number, capacity: number): number
+/** draft → null (la UI muestra "—"); otro status → formatPrice(revenue). */
+export function formatOrganizerEventRevenue(event: Pick<OrganizerEvent, "status" | "revenue">): string | null
+/** published → getEventHref(slug); otro → null (D5). */
+export function getOrganizerEventPublicHref(event: Pick<OrganizerEvent, "status" | "slug">): string | null
 ```
 
 ### C6 — `formatCount` (`src/lib/format.ts`)
@@ -248,299 +223,224 @@ export const organizerEventsService = {
 export function formatCount(value: number): string
 ```
 
-- La agrupación de miles se extrae a un helper **privado** que usan `formatPrice` y `formatCount`. `formatPrice` no cambia de salida.
+La agrupación de miles se extrae a un helper **privado** usado por `formatPrice` y `formatCount`; `formatPrice` no cambia de salida.
 
-### C7 — `useSignOut` (`src/modules/auth/hooks/use-sign-out.ts`, `"use client"`)
-
-```ts
-/** () => useClerk().signOut({ redirectUrl: DEFAULT_AFTER_AUTH_PATH }) */
-export function useSignOut(): () => Promise<void>
-```
-
-- `HeaderSessionActions` reemplaza su `onSignOut` inline por `const signOut = useSignOut()` y pasa `onSignOut={signOut}` (o una flecha equivalente). Mismo comportamiento: el test del header de 013/015 sigue verde **sin cambios**.
-
-### C8 — `BrandLogo` (extender)
+### C7 — Componentes (`src/modules/organizers/components/`)
 
 ```ts
-export type BrandLogoProps = {
-  size?: "md" | "sm"
-  tone?: "default" | "inverted"   // 013
-  caption?: string                // nuevo
-  className?: string
-}
-```
-
-- Con `caption`, el texto pasa a una columna `flex flex-col leading-[1.15]`: "Ticketera" (mismas clases que hoy) y debajo `caption` en `font-medium text-muted-foreground`, `text-xs` (md) / `text-[0.6875rem]` (sm).
-- Sin `caption`, el HTML es idéntico al actual. `caption` solo se usa con `tone="default"` en esta spec.
-
-### C9 — Componentes de la vista Resumen (`src/modules/organizers/components/`)
-
-```ts
-// organizer-dashboard.tsx (sin "use client")
+// organizer-dashboard.tsx (servidor)
 export type OrganizerDashboardProps = { events: readonly OrganizerEvent[] }
-export function OrganizerDashboard(props: OrganizerDashboardProps): React.JSX.Element
-
-// organizer-events-section.tsx ("use client"): estado del filtro, segmented, tabla/tarjetas o mensaje vacío
-export type OrganizerEventsSectionProps = { events: readonly OrganizerEvent[] }
-export function OrganizerEventsSection(props: OrganizerEventsSectionProps): React.JSX.Element
-
+// organizer-events-section.tsx ("use client"): filtro, segmented, tabla/tarjetas o mensaje vacío
+export type OrganizerEventsSectionProps = { events: readonly OrganizerEvent[]; headingLevel?: "h1" | "h2" }  // def. "h2"
 // organizer-events-table.tsx
 export type OrganizerEventsTableProps = { events: readonly OrganizerEvent[]; caption: string }
-export function OrganizerEventsTable(props: OrganizerEventsTableProps): React.JSX.Element
-
 // organizer-event-list.tsx
 export type OrganizerEventListProps = { events: readonly OrganizerEvent[] }
-export function OrganizerEventList(props: OrganizerEventListProps): React.JSX.Element
-
 // organizer-event-status-badge.tsx
 export type OrganizerEventStatusBadgeProps = { status: OrganizerEventStatus }
-export function OrganizerEventStatusBadge(props: OrganizerEventStatusBadgeProps): React.JSX.Element
-
 // organizer-event-sales.tsx: "x / capacidad vendidas" + Progress
 export type OrganizerEventSalesProps = { event: Pick<OrganizerEvent, "title" | "ticketsSold" | "capacity"> }
-export function OrganizerEventSales(props: OrganizerEventSalesProps): React.JSX.Element
+// organizer-event-cover.tsx: miniatura 52×52 (next/image) o recuadro con icono si imageUrl es null
+export type OrganizerEventCoverProps = { imageUrl: string | null }
 ```
 
-**`OrganizerDashboard`** (transcrito de `OrgDashboard`/`OrgDashboardMobile`):
+**`OrganizerDashboard`** (diseño `OrgDashboard`, tokens del proyecto):
 
-- Encabezado: `h1` "Resumen" (`text-[1.75rem] lg:text-[2rem] font-bold leading-[1.15] tracking-[-0.025em]`) y `p` "Así van las ventas de tus eventos." (`text-sm lg:text-[0.9375rem] text-muted-foreground`). En `lg` el bloque y el botón van en fila (`items-end justify-between`); en móvil apilados (`gap-3.5`) y el botón a todo el ancho.
-- Botón **"Crear evento"**: `Link href={ORGANIZER_NEW_EVENT_PATH}`, icono `Plus` 18 px (`aria-hidden`), `h-[50px] px-[22px] rounded-[14px] bg-primary text-primary-foreground text-[0.9375rem] font-semibold focus-ring`, hover `bg-primary/90`.
-- KPI: `const stats = getOrganizerDashboardStats(events)` y un único `<dl>`:
-  - tarjetas `rounded-[20px] lg:rounded-[22px] border bg-card p-[18px] lg:p-6 flex flex-col gap-1.5 lg:gap-2`; `dt` `text-[0.8125rem] lg:text-sm text-muted-foreground` (con icono de 17 px `aria-hidden` solo en `lg`); `dd` `font-bold tracking-[-0.02em] tabular-nums`;
-  - DOM en orden móvil: **Ingresos** (`formatPrice(stats.revenue)`, `col-span-2 lg:col-span-1`, `text-[1.75rem] lg:text-[2rem]`, icono `ChartColumn`), **Entradas vendidas** (`formatCount(stats.ticketsSold)`, `text-[1.375rem] lg:text-[2rem]`, icono `Ticket`), **Eventos publicados** (`formatCount(stats.publishedCount)`, mismo tamaño, icono `Calendar`; el `dt` dice "Publicados" en móvil y "Eventos publicados" en `lg`);
-  - grid `grid-cols-2 gap-3 lg:grid-cols-3 lg:gap-5`; en `lg` el orden visual es Entradas vendidas, Ingresos, Eventos publicados (`lg:order-*`, D8).
+- Encabezado: `h1` "Resumen" y `p` "Así van las ventas de tus eventos."; botón **"Crear evento"** (`Link` a `ORGANIZER_NEW_EVENT_PATH`, icono `Plus` `aria-hidden`, `Button` default, `focus-ring`); en pantallas angostas apilado y botón a ancho completo.
+- KPI: `const stats = getOrganizerDashboardStats(events)` en un `<dl>`; tarjetas `rounded-2xl border bg-card p-[18px] lg:p-6`, `dt` `text-muted-foreground`, `dd` `font-bold tabular-nums`. DOM: **Ingresos** (`formatPrice(stats.revenue)`, `col-span-2 lg:col-span-1`), **Entradas vendidas** (`formatCount`), **Eventos publicados** (`formatCount`; `dt` "Publicados" en móvil y "Eventos publicados" en `lg`). Iconos `ChartColumn`, `Ticket`, `Calendar` `aria-hidden`.
 - Debajo, `<OrganizerEventsSection events={events} />`.
 
 **`OrganizerEventsSection`**:
 
-- `<section aria-labelledby={headingId}>` con `h2` "Mis eventos" (`text-lg font-semibold`).
-- Estado `filter: OrganizerEventFilter` (inicial `"all"`); `visible = filterOrganizerEvents(events, filter)`.
-- Segmented: `ToggleGroup` con `aria-label="Filtrar eventos por estado"`, `value={[filter]}`, y `onValueChange` que solo actualiza si recibe un valor (ignora el array vacío, para que siempre haya una opción activa). Un `ToggleGroupItem` por `ORGANIZER_EVENT_FILTERS`. Estilo: contenedor `rounded-xl bg-muted p-1 gap-1` (`grid grid-cols-3 w-full` en móvil, `flex w-fit` en `xl`); opción `h-11 xl:h-9 px-3.5 rounded-[9px] text-[0.8125rem] font-medium`, presionada `bg-card font-semibold shadow-[0_2px_8px_-4px_rgba(24,24,27,.3)]` (vía `data-[pressed]`).
-- `visible.length === 0` → `<p>` en lugar de tabla y tarjetas: "all" → "Aún no tienes eventos. Crea el primero con “Crear evento”."; "published" → "No tienes eventos publicados."; "draft" → "No tienes borradores.".
-- Si hay eventos: `<OrganizerEventsTable>` dentro de `hidden xl:block` y `<OrganizerEventList>` dentro de `xl:hidden`. `caption` = `Mis eventos: ${label del filtro activo}`.
-- En `xl`, la sección es una tarjeta (`rounded-[22px] border bg-card overflow-hidden`) con cabecera `px-6 py-[18px] border-b flex items-center justify-between` (h2 + segmented). Por debajo de `xl`, sin tarjeta: h2, segmented y lista con `gap-3`.
+- `<section aria-labelledby>` con encabezado "Mis eventos" (nivel por `headingLevel`).
+- Estado `filter` (inicial `"all"`); `visible = filterOrganizerEvents(events, filter)`.
+- Segmented: `ToggleGroup` con `aria-label="Filtrar eventos por estado"`, `value={[filter]}`; `onValueChange` ignora el array vacío (siempre hay una opción activa). Opciones de `ORGANIZER_EVENT_FILTERS`; presionada `bg-card font-semibold shadow-sm` (`data-[pressed]`); alto 44 px en móvil.
+- `visible.length === 0` → `<p>`: filtro "all" → "Aún no tienes eventos. Crea el primero con “Crear evento”."; "published" → "No tienes eventos publicados."; "draft" → "No tienes borradores.".
+- Con eventos: `OrganizerEventsTable` en `hidden xl:block` y `OrganizerEventList` en `xl:hidden`; `caption` = `Mis eventos: ${label del filtro}`. En `xl` la sección es una tarjeta (`rounded-2xl border bg-card overflow-hidden`) con cabecera (título + segmented).
 
-**`OrganizerEventsTable`** (`Table*` de shadcn):
+**`OrganizerEventsTable`** (`Table*`):
 
-- `<TableCaption className="sr-only">{caption}</TableCaption>`.
-- `TableHeader` con 5 `TableHead scope="col"`: "Evento", "Estado", "Vendidas", "Ingresos" (`text-right`), y un 5.º con `<span className="sr-only">Acciones</span>`. Estilo `text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground px-6`.
-- Fila por evento (`px-6 py-3.5`, borde superior):
-  - Evento: `next/image` 52×52 `rounded-xl object-cover`, `alt=""` (el título está al lado), `sizes="52px"`; título `text-[0.9375rem] font-semibold truncate`; debajo `${formatDateShort(startsAt)} · ${city}` `text-[0.8125rem] text-muted-foreground`.
-  - Estado: `<OrganizerEventStatusBadge>`.
-  - Vendidas: `<OrganizerEventSales>` (ancho ≈ 260 px).
-  - Ingresos: `formatOrganizerEventRevenue(event)` `text-right font-semibold tabular-nums`; si es `null`: `<span aria-hidden="true">—</span><span className="sr-only">Sin ingresos</span>`.
-  - Acción: si `getOrganizerEventPublicHref(event)` no es null, `Link` "Ver evento" (`h-10 px-3.5 rounded-[11px] border-[1.5px] border-input text-[0.8125rem] font-semibold hover:bg-muted focus-ring`) con `aria-label={`Ver evento ${title}`}`; si no, celda vacía.
+- `<TableCaption className="sr-only">`; 5 `TableHead scope="col"`: "Evento", "Estado", "Vendidas", "Ingresos" (derecha), y uno con `<span className="sr-only">Acciones</span>`.
+- Fila: `OrganizerEventCover` (`alt=""`, el título está al lado) + título (`truncate`) + `${formatDateShort(startsAt)} · ${city}`; `OrganizerEventStatusBadge`; `OrganizerEventSales`; ingresos con `formatOrganizerEventRevenue` (`null` → `<span aria-hidden>—</span><span className="sr-only">Sin ingresos</span>`); acción "Ver evento" (`Link`, `aria-label={`Ver evento ${title}`}`) si `getOrganizerEventPublicHref` no es null, si no celda vacía.
 
-**`OrganizerEventList`** (tarjetas móviles, `<ul aria-label="Mis eventos">`, `grid gap-2.5 md:grid-cols-2`):
+**`OrganizerEventList`**: `<ul aria-label="Mis eventos" className="grid gap-2.5 md:grid-cols-2">`; cada `li` `rounded-2xl border bg-card p-3.5` con portada, título, `fecha · ciudad`, badge, ventas + ingresos (o "—" con `sr-only`) y, si hay href público, "Ver evento" a ancho completo (`h-11`).
 
-- `li` `rounded-[20px] border bg-card p-3.5 flex flex-col gap-3`:
-  - fila: imagen 52 px (igual que la tabla), título (`truncate`) + `fecha · ciudad` `text-xs`, y el badge a la derecha (`shrink-0`);
-  - `<OrganizerEventSales>` con el ingreso (o "—" con el mismo `sr-only`) alineado a la derecha en la línea del texto;
-  - si hay href público: `Link` "Ver evento" a todo el ancho (`h-11 rounded-xl border-[1.5px] border-input text-sm font-semibold`), mismo `aria-label`. Si no, nada.
+**`OrganizerEventStatusBadge`**: `Badge` con `ORGANIZER_EVENT_STATUS_LABELS[status]`; tonos: published `bg-success text-success-foreground` (variante `success`); draft `bg-muted text-foreground`; cancelled `bg-destructive/10 text-destructive`; suspended `bg-urgent text-urgent-foreground`. Siempre con texto.
 
-**`OrganizerEventStatusBadge`**: `Badge` con `ORGANIZER_EVENT_STATUS_LABELS[status]`, `h-7 px-3 text-xs font-semibold rounded-full`, tono por estado: published `bg-success text-success-foreground`; draft `bg-muted text-foreground`; cancelled `bg-destructive/10 text-destructive`; suspended `bg-urgent text-urgent-foreground`.
+**`OrganizerEventSales`**: `<strong>{formatCount(ticketsSold)}</strong> / {formatCount(capacity)} vendidas` (`tabular-nums`) y `Progress` con `value={getSoldPercentage(...)}`, `aria-label={`Entradas vendidas de ${title}`}`, `getAriaValueText={() => `${formatCount(ticketsSold)} de ${formatCount(capacity)} vendidas`}`; track `h-1.5 bg-muted`, indicador `bg-primary` por `className` (sin editar `progress.tsx`).
 
-**`OrganizerEventSales`**:
-
-- Texto `text-[0.8125rem] tabular-nums`: `<strong className="font-semibold">{formatCount(ticketsSold)}</strong> <span className="text-muted-foreground">/ {formatCount(capacity)} vendidas</span>`.
-- `Progress` con `value={getSoldPercentage(ticketsSold, capacity)}`, `aria-label={`Entradas vendidas de ${title}`}` y `getAriaValueText={() => `${formatCount(ticketsSold)} de ${formatCount(capacity)} vendidas`}`. Track de 6 px (`h-1.5`, `bg-muted`) e indicador `bg-primary`, ajustados por `className` sin editar `progress.tsx`.
-
-### C10 — Shell (`src/modules/organizers/components/`)
+### C8 — Ajustes al shell (`src/modules/admin`)
 
 ```ts
-// organizer-shell.tsx (servidor, sin "use client")
-export type OrganizerShellProps = {
-  organizer: Pick<OrganizerUser, "displayName" | "email">   // import type desde @/lib/auth/guards
-  children: React.ReactNode
-}
-export function OrganizerShell(props: OrganizerShellProps): React.JSX.Element
+// utils/admin-nav.ts
+export type AdminNavItem = { id: string; label: string; icon: AdminNavIconId; href: string | null; exact?: boolean }
+export function getAdminNav(staffRole: StaffRole | null, options?: { organizerActive?: boolean }): AdminNavSection[]
+// organizerActive: overview "/organizer" (exact), events "/organizer/events" (exact), create-event "/organizer/events/new"; check-in y payments: null.
+// isNavItemActive: si item.exact → pathname === item.href.
 
-// organizer-sidebar.tsx ("use client"): logo + nav + pie de cuenta. Se usa en el aside y dentro del Sheet.
-export type OrganizerSidebarProps = { organizerName: string; onNavigate?: () => void }
-export function OrganizerSidebar(props: OrganizerSidebarProps): React.JSX.Element
-
-// organizer-mobile-nav.tsx ("use client"): barra superior móvil + Sheet
-export type OrganizerMobileNavProps = { organizerName: string }
-export function OrganizerMobileNav(props: OrganizerMobileNavProps): React.JSX.Element
+// components/admin-shell.tsx  — AdminShellProps += { organizerActive?: boolean; homeHref?: string; homeLabel?: string }
+// components/admin-sidebar.tsx — AdminSidebarProps += { homeHref?: string; homeLabel?: string }
 ```
 
-- **`OrganizerShell`**: `organizerName = organizer.displayName ?? organizer.email ?? "Organizador"`. Estructura (`flex-1 bg-muted`, grid `lg:grid-cols-[264px_minmax(0,1fr)]`):
-  1. `<aside className="hidden lg:flex …">` (`bg-card border-r`, `lg:sticky lg:top-0 lg:h-dvh`, `px-4 py-6`) con `<OrganizerSidebar organizerName={…} />`;
-  2. `<OrganizerMobileNav organizerName={…} />` (solo `< lg`);
-  3. `<main className="min-w-0 px-4 pt-[22px] pb-9 lg:px-12 lg:py-10 flex flex-col gap-5 lg:gap-8">{children}</main>`. Sin `max-w`: cada página decide su ancho.
-- **`OrganizerSidebar`** (columna `flex flex-col gap-7 h-full`):
-  - `Link href="/"` con `<BrandLogo caption="Organizadores" />` (`focus-ring rounded-xl px-2`), `onClick={onNavigate}`.
-  - `<nav aria-label="Panel de organizador">` con `<ul>` de 4 ítems (`flex flex-col gap-1`), alto `h-11`, `px-3 gap-3 rounded-xl text-[0.9375rem]`, icono 19 px `aria-hidden`:
-    - **Resumen** (`LayoutDashboard`): `Link href={ORGANIZER_PATH}` con `onClick={onNavigate}`; si `usePathname() === ORGANIZER_PATH` → `aria-current="page"` + `bg-primary/10 text-primary font-semibold`; si no `font-medium text-foreground/80 hover:bg-muted`. `focus-ring`.
-    - **Mis eventos** (`Calendar`), **Ventas** (`ChartColumn`), **Configuración** (`Settings`): `<span>` no interactivo (D4), `font-medium text-muted-foreground`, con `<span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] font-medium">Próximamente</span>`.
-  - Espaciador `flex-1`.
-  - Pie (`border-t p-3 flex items-center gap-3`): avatar `size-10 rounded-full bg-primary/10 text-primary` con icono `User` 20 px `aria-hidden`; columna con `organizerName` (`text-sm font-semibold truncate`) y "Organizador" (`text-xs text-muted-foreground`); `Button variant="ghost" size="icon"` `size-10 rounded-[10px]` con `aria-label="Cerrar sesión"`, icono `LogOut` 18 px `aria-hidden`, `onClick` = `useSignOut()`.
-- **`OrganizerMobileNav`**: `<header className="lg:hidden h-16 bg-card border-b pl-4 pr-3 flex items-center justify-between">`:
-  - `Link href="/"` con `<BrandLogo size="sm" caption="Organizadores" />`;
-  - `Sheet` controlado (`open`/`onOpenChange`), `SheetTrigger render={<Button variant="ghost" size="icon" className="size-11 rounded-xl" aria-label="Abrir menú del panel" />}` con icono `Menu` 20 px;
-  - `SheetContent side="right"` con `SheetHeader`/`SheetTitle` "Panel de organizador" (`sr-only` permitido) y `<OrganizerSidebar organizerName={…} onNavigate={() => setOpen(false)} />`.
+### C9 — Rutas de `src/app` (delgadas)
 
-### C11 — Rutas de `src/app` (delgadas)
-
-- **`src/app/(organizer)/layout.tsx`**: `export default async function OrganizerLayout({ children }: { children: React.ReactNode })`; `const organizer = await requireOrganizer({ returnTo: ORGANIZER_PATH })`; devuelve `<OrganizerShell organizer={organizer}>{children}</OrganizerShell>`.
-- **`src/app/(organizer)/organizer/page.tsx`**: `metadata: { title: "Panel de organizador — Ticketera", robots: { index: false } }`; `const { userId } = await requireOrganizer({ returnTo: ORGANIZER_PATH })`; `const events = await organizerEventsService.getByOrganizer(userId)`; devuelve `<OrganizerDashboard events={events} />`.
-- **`src/app/(organizer)/organizer/events/new/page.tsx`** (placeholder **temporal**, la 018 lo reemplaza): `metadata: { title: "Crear evento — Ticketera", robots: { index: false } }`; `await requireOrganizer({ returnTo: ORGANIZER_NEW_EVENT_PATH })`; compone `Empty*` (como el placeholder de la 015): icono `CalendarPlus` en `EmptyMedia` `size-14 rounded-2xl bg-primary/10 text-primary`, `<h1>` "Crear evento", descripción "Muy pronto podrás crear tus eventos desde aquí.", `Link` "Volver al resumen" → `ORGANIZER_PATH`.
-- **`src/app/(site)/organizer/page.tsx`**: se **elimina**.
+- **`(organizer)/layout.tsx`**: `metadata: { title: "Panel de organizador — Ticketera", robots: { index: false } }`; `const organizer = await requireOrganizer({ returnTo: ORGANIZER_PATH })`; `const ctx = await requireUser()`; `defaultOpen = (await cookies()).get("sidebar_state")?.value !== "false"`; devuelve `<AdminShell userName={organizer.displayName} email={organizer.email ?? ctx.email} staffRole={ctx.staffRole} organizerActive homeHref={ORGANIZER_PATH} homeLabel="Ticketera, panel de organizador" defaultOpen={defaultOpen}>{children}</AdminShell>`.
+- **`(organizer)/organizer/page.tsx`**: `const { organizerId } = await requireOrganizer({ returnTo: ORGANIZER_PATH })`; `events = await organizerEventsService.getByOrganizer(organizerId)`; `<OrganizerDashboard events={events} />`.
+- **`(organizer)/organizer/events/page.tsx`**: `requireOrganizer({ returnTo: ORGANIZER_EVENTS_PATH })`; service; `<OrganizerEventsSection events={events} headingLevel="h1" />`.
+- **`(organizer)/organizer/events/new/page.tsx`** (placeholder **TEMPORAL**, la 018 lo reemplaza): `requireOrganizer({ returnTo: ORGANIZER_NEW_EVENT_PATH })`; `Empty*` con icono `CalendarPlus`, `<h1>` "Crear evento", "Muy pronto podrás crear tus eventos desde aquí." y `Link` "Volver al resumen" → `ORGANIZER_PATH`.
+- **`(admin)/admin/layout.tsx`**: agrega `organizerActive={ctx.organizer?.status === "active"}` al `AdminShell`.
+- El shell ya contiene el único `<main>`; las páginas no renderizan otro.
 
 ## Tareas
 
 ### Preparación (serie)
 
-- **P1** Primitivos y piezas transversales. Archivos:
-  - `src/components/ui/table.tsx`, `src/components/ui/progress.tsx`, `src/components/ui/toggle-group.tsx`, `src/components/ui/toggle.tsx`: `npx shadcn@latest add table progress toggle-group`. Si la CLI pide sobrescribir algún archivo existente, responder **no**; si toca cualquier otro archivo, se revierte. No se editan a mano.
+- **P1** Primitivos y formato. Archivos:
+  - `src/components/ui/progress.tsx`, `src/components/ui/toggle-group.tsx`, `src/components/ui/toggle.tsx`: `npx shadcn@latest add progress toggle-group`. Si la CLI pide sobrescribir un archivo existente, responder **no**; si toca otro archivo, se revierte. No se editan a mano.
   - `src/lib/format.ts` (C6) y `src/lib/format.test.ts`
-  - `src/components/shared/brand-logo.tsx` (C8)
-  - `src/modules/auth/hooks/use-sign-out.ts` (C7)
-  - `src/modules/auth/components/header-session-actions.tsx` (C7, solo el `onSignOut`)
 
   Al terminar: `npm run lint`, `npm run test`.
-- **P2** Contratos del dominio organizers. Archivos:
+- **P2** Ajustes del shell (C8, D2). Archivos:
+  - `src/modules/admin/utils/admin-nav.ts` y `src/modules/admin/utils/admin-nav.test.ts`
+  - `src/modules/admin/components/admin-shell.tsx`
+  - `src/modules/admin/components/admin-sidebar.tsx` y `src/modules/admin/components/admin-sidebar.test.tsx`
+  - `src/app/(admin)/admin/layout.tsx` (solo `organizerActive`)
+
+  Al terminar: `npm run lint`, `npm run test` (los tests existentes de la 023 siguen en verde).
+- **P3** Dominio organizers (contratos, lectura de DB). Archivos:
   - `src/modules/organizers/types/organizer-event.types.ts` (C1)
   - `src/modules/organizers/utils/organizer-routes.ts` (C2)
-  - `src/modules/organizers/data/organizer-events.mock.ts` (C3)
-  - `src/modules/organizers/utils/organizer-dashboard.ts` (C4) y `organizer-dashboard.test.ts`
-  - `src/modules/organizers/services/organizer-events.service.ts` (C5) y `organizer-events.service.test.ts`
+  - `src/modules/organizers/utils/organizer-event-mapper.ts` (C4) y `organizer-event-mapper.test.ts`
+  - `src/modules/organizers/utils/organizer-dashboard.ts` (C5) y `organizer-dashboard.test.ts`
+  - `src/modules/organizers/services/organizer-events.service.ts` (C3) y `organizer-events.service.test.ts`
 
   Al terminar: `npm run lint`, `npm run test`.
 
-### Paralelo (tras P2; archivos disjuntos; nadie corre `npm install` ni `npm run build`)
+### Paralelo (tras P1–P3; archivos disjuntos; nadie corre `npm install` ni `npm run build`)
 
-- **T1** Shell del panel y placeholder de crear evento. Archivos:
-  - `src/modules/organizers/components/organizer-shell.tsx` (C10)
-  - `src/modules/organizers/components/organizer-sidebar.tsx` (C10)
-  - `src/modules/organizers/components/organizer-mobile-nav.tsx` (C10)
-  - `src/app/(organizer)/layout.tsx` (C11)
-  - `src/app/(organizer)/organizer/events/new/page.tsx` (C11)
-- **T2** Vista Resumen. Archivos:
-  - `src/modules/organizers/components/organizer-dashboard.tsx` (C9)
-  - `src/modules/organizers/components/organizer-events-section.tsx` (C9)
-  - `src/modules/organizers/components/organizer-events-section.test.tsx`
-  - `src/modules/organizers/components/organizer-events-table.tsx` (C9)
-  - `src/modules/organizers/components/organizer-event-list.tsx` (C9)
-  - `src/modules/organizers/components/organizer-event-status-badge.tsx` (C9)
-  - `src/modules/organizers/components/organizer-event-sales.tsx` (C9)
+- **T1** Rutas del grupo `(organizer)`. Archivos:
+  - `src/app/(organizer)/layout.tsx`
+  - `src/app/(organizer)/organizer/page.tsx`
+  - `src/app/(organizer)/organizer/events/page.tsx`
+  - `src/app/(organizer)/organizer/events/new/page.tsx`
+- **T2** Vista. Archivos:
+  - `src/modules/organizers/components/organizer-dashboard.tsx`
+  - `src/modules/organizers/components/organizer-events-section.tsx` y `organizer-events-section.test.tsx`
+  - `src/modules/organizers/components/organizer-events-table.tsx`
+  - `src/modules/organizers/components/organizer-event-list.tsx`
+  - `src/modules/organizers/components/organizer-event-status-badge.tsx`
+  - `src/modules/organizers/components/organizer-event-sales.tsx`
+  - `src/modules/organizers/components/organizer-event-cover.tsx`
 
-T1 y T2 solo importan de P1/P2 y de primitivos existentes; no se importan entre sí. Verificación acotada: `npx vitest run <tests de la tarea>` y `npx eslint <archivos de la tarea>`.
+T1 importa los componentes de T2 por contrato (C7); la integración la valida el reviewer con el build final. Verificación acotada de cada tarea: `npx vitest run <tests de la tarea>` y `npx eslint <archivos de la tarea>`.
 
-### Integración (serie, tras T1 y T2)
-
-- **I1** Mover `/organizer` al grupo `(organizer)`. Archivos:
-  - `src/app/(organizer)/organizer/page.tsx` (C11, nuevo)
-  - `src/app/(site)/organizer/page.tsx` (**eliminar**)
-
-  Va al final para que nunca haya dos `page` en `/organizer` ni un `/organizer` sin shell. Al terminar: `npm run lint`, `npm run test`. El reviewer corre `npm run build`.
-
-**Tamaño:** 29 archivos — 4 generados por la CLI, 4 existentes modificados (`format.ts`, `format.test.ts`, `brand-logo.tsx`, `header-session-actions.tsx`), 1 eliminado, 17 nuevos de código/rutas (11 de módulo + 3 de shell + 3 de `src/app`) y 3 tests nuevos. Supera la guía de ~14 porque esta fase entrega el shell (contrato de la 018) y la vista juntos; los 4 de la CLI y los 2 cambios de una línea pesan poco. Si se prefiere achicar, ver Preguntas abiertas (2).
+**Tamaño:** ≈ 31 archivos (3 de la CLI, 2 de format, 6 del shell, 9 de dominio, 4 de rutas, 8 de vista + 4 tests de componente/service). Supera la guía de ~8 porque une ajuste de shell, lectura de DB y vista. Si hay que repartirlo en sesiones, el corte natural es **sesión 1 = P1–P3** (sin UI nueva) y **sesión 2 = P2 + T1 + T2**; la 018 solo depende de P2, P3 y T1.
 
 ## Criterios de aceptación
 
-**A. Rutas y acceso**
+**A. Rutas, acceso y datos**
 
-- [ ] AC1 Un organizador (`publicMetadata.isOrganizer === true`) que abre `/organizer` ve el panel: sin el header ni el footer del sitio, con `h1` "Resumen".
-- [ ] AC2 Un cliente sin rol que abre `/organizer` o `/organizer/events/new` es redirigido a `/organizer/onboarding`. Sin sesión, ambas rutas llevan a `/sign-in?redirect_url=…` (proxy).
-- [ ] AC3 `/organizer/onboarding` sigue igual que en la 015 (header y footer del sitio, sin sidebar) y un cliente puede activar su cuenta y terminar en `/organizer` con el panel.
-- [ ] AC4 `src/app/(site)/organizer/page.tsx` ya no existe; `npm run build` termina sin error de rutas en conflicto y lista `/organizer`, `/organizer/onboarding` y `/organizer/events/new`.
-- [ ] AC5 `src/app/(organizer)/layout.tsx` y las dos páginas del grupo llaman a `requireOrganizer` (`git grep requireOrganizer "src/app/(organizer)"` → 3 resultados). Ningún componente cliente importa `@/lib/auth/guards` (salvo `import type`).
+- [ ] AC1 Un organizador `active` que abre `/organizer` ve su panel dentro del shell de la 023 (sidebar, header con breadcrumb "Organizador / Resumen", pie con sesión), con `h1` "Resumen".
+- [ ] AC2 Un usuario sin perfil de organizador `active` (cliente, organizador `onboarding`/`suspended`) que abre `/organizer`, `/organizer/events` o `/organizer/events/new` es redirigido por `requireOrganizer` a `ORGANIZER_ONBOARDING_PATH` (que hoy da 404; ver Pregunta 4). Sin sesión, las tres rutas llevan a `/sign-in?redirect_url=…` (proxy).
+- [ ] AC3 `/organizer/**` no usa `publicMetadata` ni `isOrganizer` para decidir acceso (`git grep -n "publicMetadata\|isOrganizer\|becomeOrganizer" src/modules/organizers "src/app/(organizer)"` → vacío).
+- [ ] AC4 Los eventos mostrados son exactamente los de `events.organizer_id = organizerId` del usuario autenticado. Con dos organizadores con eventos distintos (seed o fixtures), cada uno ve solo los suyos; ninguna página, componente ni Server Action de esta spec recibe un id de organizador desde la URL o el cliente (`git grep -n "searchParams\|params" "src/app/(organizer)"` → solo para nada relacionado con organizador).
+- [ ] AC5 `src/app/(organizer)/layout.tsx` y las tres páginas del grupo llaman a `requireOrganizer` (`git grep -c requireOrganizer "src/app/(organizer)"` → 4 archivos). Ningún componente cliente importa `@/lib/auth/guards` (salvo `import type`). Ninguna URL queda definida dos veces y `npm run build` lista `/organizer`, `/organizer/events` y `/organizer/events/new`.
 
-**B. Shell**
+**B. Shell (reutilizado)**
 
-- [ ] AC6 En ≥ 1024 px se ve el sidebar: logo "Ticketera" + "Organizadores" (link a `/`), `nav` "Panel de organizador" con "Resumen" (`aria-current="page"`, tinte indigo) y "Mis eventos", "Ventas", "Configuración" con "Próximamente", que no son links ni botones ni reciben foco con Tab.
-- [ ] AC7 El pie del sidebar muestra el nombre completo del usuario de Clerk (o su email si no tiene nombre), "Organizador" y un botón "Cerrar sesión" (accesible por nombre) que cierra la sesión y lleva a `/`.
-- [ ] AC8 En < 1024 px no hay sidebar: se ve una barra superior con el logo y un botón "Abrir menú del panel" que abre un panel lateral (título "Panel de organizador") con la misma navegación y el mismo pie. Al pulsar "Resumen" el panel se cierra. Escape cierra el panel y devuelve el foco al botón.
-- [ ] AC9 La página tiene exactamente un `main` y la navegación está en un `nav` con nombre accesible.
+- [ ] AC6 En `/organizer` el ítem "Resumen" lleva `aria-current="page"` y es un enlace; "Mis eventos" y "Crear evento" son enlaces (no activos); "Check-in" y "Pagos" mantienen `aria-disabled="true"` y tooltip "Próximamente". En `/organizer/events` solo "Mis eventos" está activo; en `/organizer/events/new` solo "Crear evento".
+- [ ] AC7 Un organizador sin rol staff ve solo la sección "Organizador" y el rol "Organizador" en el pie; un staff que además es organizador `active` ve ambas secciones. Un admin sin perfil de organizador, en `/admin/users`, ve los ítems de "Organizador" como "Próximamente" (sin enlaces).
+- [ ] AC8 El logo del sidebar en `/organizer/**` enlaza a `/organizer` (no a `/admin/users`); en `/admin/**` sigue enlazando a `/admin/users`. Colapso a rail, drawer móvil, "Cerrar sesión" y "Ver sitio" funcionan como en la 023 (AC3–AC5 de 023, sin regresión). La página tiene exactamente un `main`.
 
-**C. Resumen**
+**C. Resumen y Mis eventos**
 
-- [ ] AC10 Con el mock, los KPI muestran **8,146** (Entradas vendidas), **$464,400** (Ingresos) y **3** (Eventos publicados), dentro de un `dl`. En desktop el orden visual es Entradas vendidas, Ingresos, Eventos publicados; en 390 px es Ingresos (ancho completo), Entradas vendidas, Publicados.
-- [ ] AC11 Cambiar el mock (p. ej. `ticketsSold` de un evento) cambia los KPI sin tocar componentes (no hay valores escritos a mano en la vista; `git grep -n "8,146\|464,400" src/modules/organizers/components` → vacío).
-- [ ] AC12 "Crear evento" (desktop y móvil) lleva a `/organizer/events/new`, que muestra dentro del shell el placeholder "Crear evento" con "Volver al resumen" → `/organizer`.
-- [ ] AC13 En ≥ 1280 px "Mis eventos" es una `table` con `caption` (oculta visualmente) y 5 encabezados de columna (`th scope="col"`, el último "Acciones" solo para lectores). En < 1280 px es una lista de tarjetas con los mismos datos.
-- [ ] AC14 Cada evento muestra miniatura, título, `fecha corta · ciudad` (p. ej. "vie 16 oct · Lima"), badge de estado ("Publicado" verde / "Borrador" gris), "7,420 / 8,000 vendidas" y una barra `role="progressbar"` con `aria-valuenow` = porcentaje (93 para 7,420/8,000), nombre accesible "Entradas vendidas de {título}" y `aria-valuetext` "7,420 de 8,000 vendidas".
-- [ ] AC15 Ingresos por evento en USD alineados a la derecha (`$445,200`); en borradores se ve "—" y los lectores oyen "Sin ingresos".
-- [ ] AC16 El segmented "Todos / Publicados / Borradores" tiene "Todos" presionado al inicio (`aria-pressed="true"`). "Publicados" deja 3 eventos; "Borradores" deja solo "Muestra de Arte Joven". Pulsar la opción ya activa no deja el grupo sin selección.
-- [ ] AC17 Los publicados tienen un link "Ver evento" a su detalle público (`/events/festival-sonidos-del-sur` abre la página del evento, no un 404). Los borradores no tienen acción. No hay links con `href="#"` ni botones sin efecto en el panel.
-- [ ] AC18 Controles interactivos con foco visible (`focus-ring`) y área táctil ≥ 44 px en móvil (segmented, "Ver evento", menú, cerrar sesión ≥ 40 px como el diseño). Se ve bien en modo claro y oscuro (solo tokens, sin hex).
+- [ ] AC9 Los KPI muestran, dentro de un `dl`, Entradas vendidas = Σ `ticket_types.sold_count`, Ingresos = Σ subtotales de órdenes `paid` (USD) y Eventos publicados = cantidad con `status = 'published'`, todos de los eventos del organizador. Con el seed de la 022 (organizador con 10 eventos publicados) "Eventos publicados" = 10. Orden visual en `lg`: Entradas vendidas, Ingresos, Eventos publicados; en 390 px: Ingresos (ancho completo), Entradas vendidas, Publicados.
+- [ ] AC10 No hay valores de KPI escritos a mano en componentes: cambiar datos en la DB cambia los KPI sin tocar código.
+- [ ] AC11 "Crear evento" (botón del Resumen y enlace del sidebar) lleva a `/organizer/events/new`, que muestra dentro del shell el placeholder "Crear evento" con "Volver al resumen" → `/organizer`.
+- [ ] AC12 En ≥ 1280 px "Mis eventos" es una `table` con `caption` (oculta visualmente) y 5 encabezados `th scope="col"` (el último "Acciones" solo para lectores). En < 1280 px es una lista de tarjetas con los mismos datos.
+- [ ] AC13 Cada evento muestra portada (o recuadro neutro si no hay imagen utilizable), título, `fecha corta · ciudad` (p. ej. "vie 16 oct · Lima"), badge de estado con texto, "7,420 / 8,000 vendidas" y una barra `role="progressbar"` con `aria-valuenow` = porcentaje (93 para 7,420/8,000), nombre accesible "Entradas vendidas de {título}" y `aria-valuetext` "7,420 de 8,000 vendidas".
+- [ ] AC14 Ingresos por evento en USD alineados a la derecha (p. ej. `$445,200`); en borradores se ve "—" y los lectores oyen "Sin ingresos".
+- [ ] AC15 El segmented "Todos / Publicados / Borradores" tiene "Todos" presionado al inicio (`aria-pressed="true"`). Cada opción filtra por `status`; pulsar la opción activa no deja el grupo sin selección. Con 0 eventos se ve "Aún no tienes eventos. Crea el primero con “Crear evento”." y no hay `table`.
+- [ ] AC16 Los eventos publicados tienen "Ver evento" → `/events/{slug}` (detalle público, existe en la DB); borradores, cancelados y suspendidos no tienen acción. No hay links con `href="#"` ni botones sin efecto.
+- [ ] AC17 `/organizer/events` muestra `h1` "Mis eventos" con la misma sección (tabla/tarjetas y filtro), sin los KPI y sin un `h2` duplicado.
+- [ ] AC18 Controles interactivos con foco visible (`focus-ring`) y área táctil ≥ 44 px en móvil (segmented, "Ver evento"); solo tokens (sin hex); legible en claro y oscuro.
 
 **D. Regresión**
 
-- [ ] AC19 El header del sitio sigue cerrando sesión igual que antes (test del header de 013/015 en verde sin cambios) y `BrandLogo` sin `caption` renderiza lo mismo que antes en header, footer y auth.
+- [ ] AC19 `/admin/users` y el resto de la 023 siguen funcionando igual (tests de la 023 en verde; el cambio de `getAdminNav` es compatible hacia atrás sin `organizerActive`).
 - [ ] AC20 `npm run lint`, `npm run test` y `npm run build` en verde.
 
 ## Tests obligatorios
 
-- **`src/lib/format.test.ts`** (ampliar) — `formatCount`: `0` → "0"; `414` → "414"; `8146` → "8,146"; `1200000` → "1,200,000"; `7420.6` → "7,421". Los casos existentes de `formatPrice` siguen en verde.
-- **`src/modules/organizers/utils/organizer-dashboard.test.ts`**:
-  - `getOrganizerDashboardStats`: con `ORGANIZER_EVENTS_MOCK` → `{ ticketsSold: 8146, revenue: 464400, publishedCount: 3 }`; con `[]` → ceros; un evento `cancelled` suma vendidas e ingresos pero no cuenta como publicado.
-  - `filterOrganizerEvents`: `"all"` devuelve los 4 en el mismo orden y un array distinto (no la misma referencia); `"published"` → 3; `"draft"` → 1; no muta la entrada.
+- **`src/lib/format.test.ts`** (ampliar) — `formatCount`: `0` → "0"; `414` → "414"; `8146` → "8,146"; `1200000` → "1,200,000"; `7420.6` → "7,421". Los casos de `formatPrice` siguen en verde.
+- **`src/modules/admin/utils/admin-nav.test.ts`** (ampliar) — sin `organizerActive`: toda la sección "Organizador" con `href: null` (comportamiento actual); con `organizerActive`: Resumen `/organizer`, Mis eventos `/organizer/events`, Crear evento `/organizer/events/new`, Check-in y Pagos `null`; `findNavMatch("/organizer")` → Resumen; `("/organizer/events")` → Mis eventos (no Resumen); `("/organizer/events/new")` → Crear evento (no Mis eventos); `staffRole = null` → solo sección "Organizador".
+- **`src/modules/admin/components/admin-sidebar.test.tsx`** (ampliar) — `homeHref` personalizado en el logo; por defecto `/admin/users`; ítem organizador con `href` es enlace con `aria-current` según `usePathname` mockeado.
+- **`src/modules/organizers/utils/organizer-event-mapper.test.ts`** — `toOrganizerEvent`: `startsAt` ISO; `revenue = cents / 100` (`44520000` → `445200`); sin totales ni órdenes → `capacity`, `ticketsSold`, `revenue` en 0; `coverKey` Unsplash → `imageUrl`; `null`, otro host o no-URL → `imageUrl: null`.
+- **`src/modules/organizers/utils/organizer-dashboard.test.ts`** (fixtures locales, sin mock global):
+  - `getOrganizerDashboardStats`: fixture de 4 eventos (3 publicados + 1 borrador) → totales esperados; `[]` → ceros; un `cancelled` suma vendidas e ingresos pero no cuenta como publicado.
+  - `filterOrganizerEvents`: `"all"` devuelve todos en el mismo orden y un array distinto (no la misma referencia); `"published"`; `"draft"`; no muta la entrada.
   - `getSoldPercentage`: `(7420, 8000)` → 93; `(0, 1500)` → 0; `(1, 3)` → 33; `(2, 3)` → 67; `(900, 800)` → 100; `(-5, 100)` → 0; `(10, 0)` → 0; `(NaN, 100)` → 0.
   - `formatOrganizerEventRevenue`: published `445200` → "$445,200"; draft → `null`; suspended `0` → "$0".
   - `getOrganizerEventPublicHref`: published → `/events/{slug}`; draft, cancelled y suspended → `null`.
   - `ORGANIZER_EVENT_FILTERS` en orden Todos, Publicados, Borradores; `ORGANIZER_EVENT_STATUS_LABELS` con los 4 estados.
-- **`src/modules/organizers/services/organizer-events.service.test.ts`** — `getByOrganizer("user_123")`: devuelve los 4 eventos ordenados por `startsAt` ascendente; mutar el array devuelto no altera `ORGANIZER_EVENTS_MOCK`; los slugs de los publicados existen en `EVENTS_MOCK` (protege D5).
-- **`src/modules/organizers/components/organizer-events-section.test.tsx`** (RTL, con `ORGANIZER_EVENTS_MOCK`; tabla y lista conviven en jsdom, así que se consulta con `within(screen.getByRole("table"))` y `within(screen.getByRole("list", { name: "Mis eventos" }))`):
+- **`src/modules/organizers/services/organizer-events.service.test.ts`** (mock de `getDb()` con el mismo patrón que `users.service.test.ts`) — `getByOrganizer("org-1")`: aplica el filtro por `organizerId` en la consulta de eventos; devuelve los eventos mapeados en el orden recibido (`starts_at` ascendente); evento sin tipos ni órdenes → 0/0/0; con tipos y órdenes pagadas → totales por `event_id`; sin eventos → `[]` y **no** ejecuta las consultas de agregados.
+- **`src/modules/organizers/components/organizer-events-section.test.tsx`** (RTL, con fixture de 3 publicados y 1 borrador; tabla y lista conviven en jsdom, así que se consulta con `within(screen.getByRole("table"))` y `within(screen.getByRole("list", { name: "Mis eventos" }))`):
   - inicial: "Todos" con `aria-pressed="true"`; la tabla tiene 4 filas de datos y `caption` "Mis eventos: Todos";
-  - clic en "Borradores": solo "Muestra de Arte Joven" en tabla y lista, sin link "Ver evento", ingreso "Sin ingresos" accesible; "Borradores" `aria-pressed="true"` y "Todos" `"false"`;
-  - clic otra vez en "Borradores": sigue presionado (no queda vacío);
-  - "Publicados": 3 filas; "Ver evento Festival Sonidos del Sur" tiene `href="/events/festival-sonidos-del-sur"`;
-  - barra de progreso de "Festival Sonidos del Sur": `aria-valuenow="93"` y `aria-valuetext="7,420 de 8,000 vendidas"`;
-  - con `events=[]`: se ve "Aún no tienes eventos. Crea el primero con “Crear evento”." y no hay `table`; con solo publicados y filtro "Borradores": "No tienes borradores.".
+  - clic en "Borradores": solo el borrador en tabla y lista, sin "Ver evento", ingreso "Sin ingresos" accesible; "Borradores" `aria-pressed="true"` y "Todos" `"false"`; clic otra vez: sigue presionado;
+  - "Publicados": 3 filas; el link "Ver evento {título}" tiene `href="/events/{slug}"`;
+  - barra de progreso: `aria-valuenow="93"` y `aria-valuetext="7,420 de 8,000 vendidas"` (fixture 7420/8000);
+  - `events=[]`: mensaje "Aún no tienes eventos…" y sin `table`; solo publicados con filtro "Borradores": "No tienes borradores.";
+  - `headingLevel="h1"` renderiza un `h1` "Mis eventos".
 
-No requieren test unitario (SETUP §3): `organizer-shell`, `organizer-sidebar`, `organizer-mobile-nav` (composición; se verifican en manual con AC6–AC9), `organizer-dashboard`, `organizer-events-table`, `organizer-event-list`, `organizer-event-status-badge`, `organizer-event-sales` (presentacionales; su lógica está en utils testeados y se ejercitan en el test de la sección), `use-sign-out` (wrapper trivial; cubierto por el test del header), `brand-logo` y las páginas/layout.
+No requieren test unitario (SETUP §3): `admin-shell.tsx` (cambio de props), `organizer-dashboard`, `organizer-events-table`, `organizer-event-list`, `organizer-event-status-badge`, `organizer-event-sales`, `organizer-event-cover` (presentacionales; lógica en utils testeados y ejercitada en el test de la sección), layout y páginas de `src/app/**` (delgados).
 
 ## Verificación
 
 - `npm run lint`
 - `npm run test`
-- `npm run build` (AC4: ver las tres rutas en la salida)
-- **Manual** (`npm run dev`, con un usuario organizador — M4 de la 015 — y otro sin rol):
-  - 1440 px: `/organizer` → AC1, AC6, AC7, AC10, AC13–AC17; Tab por todo el panel (los ítems "Próximamente" no reciben foco).
-  - 390 px: AC8, AC10 (orden móvil), tarjetas, segmented a todo el ancho.
-  - 1100 px: sidebar visible y tarjetas (D8).
-  - Usuario sin rol: AC2; activar en `/organizer/onboarding` → AC3.
-  - Modo oscuro: AC18.
-  - "Cerrar sesión" del panel y del header (AC7, AC19).
+- `npm run build` (AC5: ver las tres rutas en la salida; el reviewer lo corre al cerrar el bloque paralelo)
+- **Manual** (`npm run dev`, con migración 019 aplicada y `npm run db:seed -- --organizer-email <email>` de un organizador `active`, creado desde `/admin/users`; y un usuario cliente):
+  - 1440 px como organizador: `/organizer` → AC1, AC6–AC9, AC12–AC16, AC18; `/organizer/events` → AC17; "Crear evento" → AC11; contraer el sidebar a rail y recargar (persistencia).
+  - Con un segundo organizador con otros eventos → AC4.
+  - 390 px: drawer, tarjetas, segmented a ancho completo, orden móvil de KPI.
+  - Cliente sin perfil → AC2 (redirige; hoy 404 en `/organizer/onboarding`, esperado hasta la Pregunta 4).
+  - Admin sin perfil de organizador en `/admin/users` → AC7 (ítems "Próximamente").
+  - Modo oscuro → AC18. Nota: tras el seed los ingresos muestran `$0` (no hay órdenes); ver Pregunta 3.
 
 ## Transcrito del diseño vs. criterio propio
 
 | Transcrito (`OrgDashboard` / `OrgDashboardMobile`) | Criterio propio |
 |---|---|
-| Sidebar 264 px blanca, logo + "Organizadores", nav de 4 ítems con iconos (Resumen activa con tinte indigo), pie con avatar, nombre y botón de cerrar sesión | "Organizador" bajo el nombre (pedido del orquestador); ítems no disponibles como `span` + "Próximamente" (D4) |
-| h1 "Resumen", subtítulo, botón indigo "Crear evento" con `Plus` | Placeholder de `/organizer/events/new` (D6) |
-| 3 KPI en `dl`, 32 px `tabular-nums`; móvil: Ingresos ancho completo, luego Entradas vendidas y Publicados | USD y `$` en vez de `S/` (D3); KPI calculados por util (D9) |
-| Sección "Mis eventos" con segmented Todos/Publicados/Borradores (`aria-pressed`) | `ToggleGroup` de shadcn/Base UI (foco con flechas); alto 44 px en móvil (diseño 40 px) por la regla de 44 px de §1.5 |
-| Columnas Evento / Estado / Vendidas (+ barra indigo 6 px) / Ingresos / acción; borrador con ingresos "—"; badges verde/gris | `table` semántica con `caption` en vez de `ul` + cabecera `aria-hidden`; progreso con `role="progressbar"`; "Ver evento" en vez de "Ver ventas"/"Editar" (D5); tonos de cancelado/suspendido; tabla desde `xl` (D8) |
-| Móvil: barra superior 64 px con logo y "Abrir menú del panel"; eventos como tarjetas | `Sheet` lateral derecho (como el menú del sitio); tarjetas en 2 columnas desde `md` |
-| Datos: 4 eventos (3 publicados, 1 borrador), 7,420/8,000 en el primero | Títulos, fechas e imágenes del catálogo propio (sin marcas reales); ingresos = vendidas × `priceFrom` (C3) |
+| h1 "Resumen", subtítulo, botón indigo "Crear evento" con `Plus` | Sidebar, header y menú móvil son los del shell de la 023 (colapsable, breadcrumb), no un sidebar propio; placeholder de `/organizer/events/new` |
+| 3 KPI en `dl`; móvil: Ingresos a ancho completo, luego Entradas vendidas y Publicados | USD y `$` en vez de `S/`; KPI calculados desde la DB con util puro (D4, D8) |
+| Sección "Mis eventos" con segmented Todos/Publicados/Borradores | `ToggleGroup` shadcn/Base UI; 44 px en móvil |
+| Columnas Evento / Estado / Vendidas (+ barra) / Ingresos / acción; badges | `table` semántica con `caption`; progreso con `role="progressbar"`; "Ver evento" en lugar de "Ver ventas"/"Editar" (D5); tabla desde `xl` (D7) |
+| Datos de ejemplo del diseño | Datos reales de la DB (019) y seed (022) |
 
 ## Contratos que consume la 018
 
 | Contrato | Archivo | Uso en la 018 |
 |---|---|---|
-| Route group del panel y su layout (`requireOrganizer` + `OrganizerShell`) | `src/app/(organizer)/layout.tsx` | Toda página nueva en `src/app/(organizer)/organizer/**` hereda sidebar, barra móvil y `<main>`. La página **no** debe renderizar otro `main`. |
-| Placeholder `/organizer/events/new` | `src/app/(organizer)/organizer/events/new/page.tsx` | La 018 **reemplaza** este archivo. Debe seguir llamando a `requireOrganizer({ returnTo: ORGANIZER_NEW_EVENT_PATH })` (D2). |
-| `ORGANIZER_NEW_EVENT_PATH = "/organizer/events/new"` | `src/modules/organizers/utils/organizer-routes.ts` | Página, `returnTo` y redirecciones. Protegida por el proxy (`/organizer/**`). |
-| `ORGANIZER_PATH` (Resumen) | `src/lib/auth/auth-routes.ts` (013) | Volver al panel tras guardar/publicar. |
-| `OrganizerEvent`, `OrganizerEventStatus` | `src/modules/organizers/types/organizer-event.types.ts` | Forma del evento del organizador (estado `draft`/`published` al guardar/publicar). Si la 018 necesita más campos (p. ej. `description`, `venueName`, `imageUrl` opcional), los agrega de forma compatible. |
-| `ORGANIZER_EVENTS_MOCK` | `src/modules/organizers/data/organizer-events.mock.ts` | Datos de ejemplo. Sin persistencia: crear un evento no lo agrega al mock. |
-| `ORGANIZER_EVENT_STATUS_LABELS`, `OrganizerEventStatusBadge` | `src/modules/organizers/utils/organizer-dashboard.ts`, `components/organizer-event-status-badge.tsx` | Si la 018 muestra el estado. |
-| `organizerEventsService` | `src/modules/organizers/services/organizer-events.service.ts` | Punto donde la 018 (o la fase con base) agregará `create(...)`. |
-| `OrganizerShell`, `OrganizerSidebar`, `OrganizerMobileNav` | `src/modules/organizers/components/` | No se importan desde páginas (los compone el layout). Nota: la barra móvil del shell se ve en todas las páginas del grupo; si la 018 quiere el header "← Crear evento" de `OrgCreateMobile`, lo pone **debajo** de la barra o extiende el shell (decisión de la 018). En `/organizer/events/new` ningún ítem del sidebar queda activo (D4). |
-| `formatCount` | `src/lib/format.ts` | "Capacidad total" y conteos. |
-| `BrandLogo` con `caption` | `src/components/shared/brand-logo.tsx` | Si la 018 necesita el logo de organizadores fuera del shell. |
-| `useSignOut` | `src/modules/auth/hooks/use-sign-out.ts` | Cualquier otro botón de cerrar sesión. |
+| Route group del panel y su layout (`requireOrganizer` + `AdminShell`) | `src/app/(organizer)/layout.tsx` | Toda página nueva en `src/app/(organizer)/organizer/**` hereda sidebar, header y `<main>`. La página **no** renderiza otro `main`. |
+| Placeholder `/organizer/events/new` | `src/app/(organizer)/organizer/events/new/page.tsx` | La 018 lo **reemplaza**; debe seguir llamando a `requireOrganizer({ returnTo: ORGANIZER_NEW_EVENT_PATH })`. |
+| `ORGANIZER_PATH`, `ORGANIZER_EVENTS_PATH`, `ORGANIZER_NEW_EVENT_PATH` | `src/lib/auth/auth-routes.ts`, `src/modules/organizers/utils/organizer-routes.ts` | Redirecciones tras guardar/publicar. |
+| `getAdminNav(…, { organizerActive })` y `exact` | `src/modules/admin/utils/admin-nav.ts` | Cualquier ítem nuevo del panel se activa cambiando su `href`. |
+| `OrganizerUser.organizerId` | `src/lib/auth/guards.ts` (020) | Valor de `events.organizer_id` al crear (siempre del guard, nunca del formulario). |
+| `OrganizerEvent`, `OrganizerEventStatus` | `src/modules/organizers/types/organizer-event.types.ts` | Forma del evento del organizador. Si la 018 necesita más campos, los agrega de forma compatible. |
+| `organizerEventsService` | `src/modules/organizers/services/organizer-events.service.ts` | Punto donde la 018 agrega `create(...)`. |
+| `ORGANIZER_EVENT_STATUS_LABELS`, `OrganizerEventStatusBadge` | `utils/organizer-dashboard.ts`, `components/organizer-event-status-badge.tsx` | Si la 018 muestra el estado. |
+| `formatCount` | `src/lib/format.ts` | Conteos. |
 
-**Archivos existentes que modifica esta spec:** `src/lib/format.ts`, `src/lib/format.test.ts`, `src/components/shared/brand-logo.tsx`, `src/modules/auth/components/header-session-actions.tsx` (de la 013/015) y la eliminación de `src/app/(site)/organizer/page.tsx` (de la 015).
+**Archivos existentes que modifica esta spec:** `src/lib/format.ts` y su test, `src/modules/admin/utils/admin-nav.ts` y su test, `src/modules/admin/components/admin-shell.tsx`, `admin-sidebar.tsx` y su test, `src/app/(admin)/admin/layout.tsx`.
 
 ## Preguntas abiertas
 
-Ninguna bloqueante. Puntos de criterio propio para revisar al aprobar:
+Hay una recomendación asumida por defecto en cada una; responder distinto cambia solo lo indicado.
 
-1. **Doble `currentUser()` por request (D2):** layout y página llaman a `requireOrganizer()`. Si molesta la latencia, la 015 podría envolver los guards con `cache()` de React (cambio en `guards.ts`, fuera de esta spec). ¿Se acepta así por ahora?
-2. **Tamaño (29 archivos):** si se quiere acercar a ~14, la opción es separar el shell + placeholder (P1 parcial, P2 de tipos/rutas, T1) como 017 y la vista Resumen (T2 + I1) como una 017b. La 018 solo depende de la primera parte.
-3. **Coordinación con 016/018 (en redacción en paralelo):** esta spec agrega `toggle-group`/`toggle` (shadcn), `formatCount` (`src/lib/format.ts`) y `caption` en `BrandLogo`. Si la 016 necesita un segmented de botones, debería reutilizar `ToggleGroup`; si la 016 o la 018 tocan `format.ts` o `brand-logo.tsx`, deben ejecutarse después de la 017 o coordinar el orden.
-4. **"Ver evento" en lugar de "Ver ventas" / "Editar" (D5)** y **ítems "Próximamente" visibles** (D4) en vez de ocultarlos. ¿OK?
+1. **Ubicación de las rutas (D1).** Recomendado y asumido: `/organizer`, `/organizer/events`, `/organizer/events/new` en un grupo `(organizer)` que reutiliza `AdminShell`. Es coherente con `ORGANIZER_PATH` (guards, proxy, `UserMenu`), permite que un organizador no staff use el shell sin abrir `/admin` (que exige staff) y deja libre `/admin/**` para moderación. Alternativa: `/admin/organizer/**` (exigiría relajar `requireStaff` del layout `/admin` y mezclar permisos; no recomendado).
+2. **"Mis eventos" navegable.** Asumido: se activan "Resumen" (`/organizer`) y "Mis eventos" (`/organizer/events`, listado completo con el mismo componente, 1 página extra) y "Crear evento" (placeholder). Alternativa mínima: solo "Resumen", dejando "Mis eventos" como "Próximamente" y sin `/organizer/events` (se quitan 1 página y el prop `headingLevel`).
+3. **Fuente de "Ingresos".** Asumido (D4): suma de `subtotal_cents` de órdenes `paid` (excluye comisión, reembolsos y pendientes). Efecto: con el seed de la 022 hay `sold_count` pero no órdenes, así que `Ingresos` muestra `$0` mientras `Entradas vendidas` > 0 hasta que haya compras reales. Alternativa: derivar `Σ sold_count × price_cents` (siempre coherente con el seed, pero ignora reembolsos y precios cambiados). ¿Cuál se prefiere?
+4. **`/organizer/onboarding` no existe.** `requireOrganizer()` redirige allí a quien no es organizador `active` y hoy da 404 (020 Q2 la difiere a una spec posterior: pantalla "solicita acceso"). No se resuelve aquí; si el 404 es inaceptable antes de esa pantalla, habría que crearla en una spec aparte (fuera del grupo `(organizer)`, D1).
+5. **Tamaño (≈ 31 archivos).** Si se prefiere una sesión más corta, partir en 017a (P1–P3: ajustes de shell, dominio y service) y 017b (T1–T2: rutas y vista).
+
+**Resueltas / obsoletas respecto a la versión anterior:** el doble `currentUser()` por request ya no aplica (los guards de la 020 memoizan con `cache()`); la coordinación de `format.ts`/`brand-logo.tsx` con 016/018 se reduce a `formatCount` (ya no se toca `brand-logo.tsx`); "Ver evento" en lugar de "Ver ventas/Editar" y los ítems "Próximamente" se mantienen (D5, 023 D3).
